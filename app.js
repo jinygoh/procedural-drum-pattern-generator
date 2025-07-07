@@ -49,13 +49,13 @@ const synths = {
 
 synths.kick.volume.value = -2; // Kick slightly less than max to leave room
 
-synths.snare.membrane.volume.value = -8; // Boosted membrane for more body
-synths.snare.noise.volume.value = -5;    // Boosted noise for more snap
+synths.snare.membrane.volume.value = -5;    // Significantly boosted membrane for more body
+synths.snare.noise.volume.value = -2;      // Significantly boosted noise for more snap, matching kick level
 
-synths.hiHat.volume.value = -14;      // Hi-hats can be fairly quiet
+synths.hiHat.volume.value = -20;      // Hi-hats significantly quieter
 // synths.hiHat.filter.Q.value = 1; // Default Q is 1, can increase for more resonance if needed
 
-synths.crash.volume.value = -10;       // Crashes are naturally loud, keep them controlled
+synths.crash.volume.value = -12;       // Crashes also slightly more controlled
 
 synths.tom.volume.value = -9;          // Toms boosted slightly relative to previous
 
@@ -461,10 +461,10 @@ async function exportWAV() {
             // offlineSynths.snare.noise.connect(offlineSynths.snare.membrane); // This is incorrect
             // Apply similar volume adjustments to offline synths
             offlineSynths.kick.volume.value = -2;
-            offlineSynths.snare.membrane.volume.value = -8;
-            offlineSynths.snare.noise.volume.value = -5;
-            offlineSynths.hiHat.volume.value = -14;
-            offlineSynths.crash.volume.value = -10;
+            offlineSynths.snare.membrane.volume.value = -5; // Matched to live synth
+            offlineSynths.snare.noise.volume.value = -2;    // Matched to live synth
+            offlineSynths.hiHat.volume.value = -20; // Matched to live synth
+            offlineSynths.crash.volume.value = -12; // Matched to live synth
             offlineSynths.tom.volume.value = -9;
 
 
@@ -589,15 +589,28 @@ function init() {
     updateBpmForGenre(genreSelect.value); // Set initial BPM based on default selected genre
     handleGenreChange(); // This will call handleGenerate
 
-    // Adjust playhead on window resize
+    // Adjust playhead related calculations on window resize
     window.addEventListener('resize', () => {
+        // Recalculate and set the visual width of the playhead line/bar itself
         const firstStepCell = midiGridDiv.querySelector('.step');
         if (firstStepCell) {
             playheadDiv.style.width = `${firstStepCell.offsetWidth}px`;
         }
-        // If playing, re-setup playhead to correctly calculate positions with new widths
+
+        // If playing, the playhead's movement calculation needs to be updated
+        // with the new step and label widths.
+        // Clearing and re-scheduling setupPlayhead will ensure it uses fresh measurements.
         if (isPlaying) {
-            setupPlayhead();
+            if (playheadEventId !== null) {
+                Tone.Transport.clear(playheadEventId);
+                playheadEventId = null; // Important to nullify before recall
+            }
+            setupPlayhead(); // Re-initialize with new dimensions
+        } else {
+            // If stopped, still update the initial transform in case labels resized
+            const labelWidth = midiGridDiv.querySelector('.instrument-label.bar-header-empty')?.offsetWidth ||
+                               midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+            playheadDiv.style.transform = `translateX(${labelWidth}px)`;
         }
     });
     console.log("Drum Machine Initialized. Tone.js version:", Tone.version);

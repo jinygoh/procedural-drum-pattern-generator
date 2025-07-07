@@ -173,7 +173,7 @@ body {
     background-color: rgba(255, 255, 0, 0.7); /* Semi-transparent yellow */
     pointer-events: none; /* Don't interfere with clicks */
     z-index: 10;
-    transition: transform 0.05s linear; /* Smooth movement */
+    /* transition: transform 0.05s linear; */ /* Removed to potentially fix lag */
 }
 
 /* Specific instrument row styling if needed in future */
