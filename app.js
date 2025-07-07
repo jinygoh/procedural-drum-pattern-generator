@@ -376,6 +376,13 @@ function updateBpmForGenre(genre) {
 
 // --- Export Functions ---
 function exportMIDI() {
+    console.log("Attempting to export MIDI. Checking MidiWriter object:", window.MidiWriter, "Type:", typeof window.MidiWriter);
+    if (typeof MidiWriter === 'undefined') {
+        alert("MidiWriter library is not loaded. Cannot export MIDI. Please check your internet connection or ad blockers.");
+        console.error("MidiWriter is undefined. Library might have failed to load.");
+        return;
+    }
+
     if (!currentPattern) {
         alert("Please generate a pattern first.");
         return;
@@ -462,48 +469,57 @@ async function exportWAV() {
                     octaves: 6,
                     oscillator: { type: 'fmsine' },
                     envelope: { attack: 0.001, decay: 0.3, sustain: 0.01, release: 0.2 }
-                }).toDestination(),
+                }),
                 snare: {
-                    noise: new Tone.NoiseSynth({ // Keep existing offline-specific options
-                        noise: { type: 'pink' }, // Match live synth for type
-                        envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.1 } // Match live synth
-                    }).toDestination(),
-                    membrane: new Tone.MembraneSynth({ // Match live synth
+                    noise: new Tone.NoiseSynth({
+                        noise: { type: 'pink' },
+                        envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.1 }
+                    }),
+                    membrane: new Tone.MembraneSynth({
                         pitchDecay: 0.08,
                         octaves: 5,
                         oscillator: {type: "sine"},
                         envelope: {attack: 0.002, decay: 0.1, sustain: 0, release: 0.05}
-                    }).toDestination()
+                    })
                 },
-                hiHat: new Tone.NoiseSynth({ // Match live synth
+                hiHat: new Tone.NoiseSynth({
                     noise: { type: 'white' },
                     envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.03 },
-                    filter: new Tone.Filter(8000, "highpass") // Filter needs to be newed up for offline synth
-                }).toDestination(),
-                crash: new Tone.MetalSynth({ // Match live synth
+                    filter: new Tone.Filter(8000, "highpass")
+                }),
+                crash: new Tone.MetalSynth({
                     frequency: 150,
                     envelope: { attack: 0.002, decay: 1.5, release: 2 },
                     harmonicity: 4.1,
                     modulationIndex: 20,
                     resonance: 3000,
                     octaves: 1.2
-                }).toDestination(),
-                tom: new Tone.MembraneSynth({ // Match live synth
+                }),
+                tom: new Tone.MembraneSynth({
                     pitchDecay: 0.08,
                     octaves: 4,
                     oscillator: { type: 'sine' },
                     envelope: { attack: 0.005, decay: 0.25, sustain: 0.01, release: 0.1 }
-                }).toDestination()
+                })
             };
-            // offlineSynths.snare.noise.connect(offlineSynths.snare.membrane); // This is incorrect
+
+            // Connect all synths to the offline transport's destination
+            offlineSynths.kick.connect(offlineTransport.destination);
+            offlineSynths.snare.noise.connect(offlineTransport.destination);
+            offlineSynths.snare.membrane.connect(offlineTransport.destination);
+            offlineSynths.hiHat.connect(offlineTransport.destination);
+            offlineSynths.crash.connect(offlineTransport.destination);
+            offlineSynths.tom.connect(offlineTransport.destination);
+
+            console.log("Offline kick synth object:", offlineSynths.kick);
+            console.log("Offline kick volume object:", offlineSynths.kick.volume);
 
             // Apply volume adjustments to offline synths
-            // These should now work if synths are properly instantiated with all necessary sub-objects
             offlineSynths.kick.volume.value = -2;
             offlineSynths.snare.membrane.volume.value = -5;
             offlineSynths.snare.noise.volume.value = -2;
-            offlineSynths.hiHat.volume.value = -20; // Matched to live synth
-            offlineSynths.crash.volume.value = -12; // Matched to live synth
+            offlineSynths.hiHat.volume.value = -20;
+            offlineSynths.crash.volume.value = -12;
             offlineSynths.tom.volume.value = -9;
 
 
