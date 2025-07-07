@@ -1,4 +1,4 @@
-import { generatePattern, GENRE_LIST, INSTRUMENTS as INSTRUMENT_NAMES } from './generator.js';
+import { generatePattern, GENRE_LIST, INSTRUMENTS as INSTRUMENT_NAMES, GENRE_BPM_MAP } from './generator.js';
 
 // --- Tone.js Synthesizer Setup ---
 const synths = {
@@ -196,29 +196,64 @@ function setupPlayhead() {
 async function handleGenerate() {
     await Tone.start(); // Ensure AudioContext is running
 
-    const selectedGenre = genreSelect.value;
+    let genreToGenerate = genreSelect.value;
     let fusionPair = [];
+    // This flag indicates if handleGenerate was called by the "Generate All" button,
+    // which is now passed via handleGenerateWrapper.
+    // We'll use this to decide if we need to pick a random genre.
+    // The autoPlay parameter in handleGenerateWrapper serves a dual purpose now:
+    // 1. Trigger auto-play
+    // 2. Indicate that "Generate All" was the source, thus potentially randomizing genre.
 
-    if (selectedGenre === "genre-fusion") {
-        // Randomly select two different base genres
+    // The first argument to handleGenerate is now `isGenerateAllContext`
+    const isGenerateAllClick = arguments.length > 0 && arguments[0] === true;
+
+    if (isGenerateAllClick) {
+        // "Generate All" button was clicked, so pick a random base genre.
+        const randomBaseGenreIndex = Math.floor(Math.random() * GENRE_LIST.length);
+        genreToGenerate = GENRE_LIST[randomBaseGenreIndex];
+        genreSelect.value = genreToGenerate; // Update dropdown to reflect the randomly chosen genre
+    }
+    // If not from "Generate All", genreToGenerate remains genreSelect.value (i.e., what user manually selected)
+
+    if (genreToGenerate === "genre-fusion") {
+        // This block will now only be entered if the user *manually* selected "Genre Fusion"
+        // from the dropdown and then either hit play (if no pattern) or it was triggered by genre change.
+        // "Generate All" now bypasses "genre-fusion" and "experimental" for direct generation.
         let genre1 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
         let genre2 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
-        while (genre2 === genre1) { // Ensure they are different
+        while (genre2 === genre1) {
             genre2 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
         }
         fusionPair = [genre1, genre2];
-        console.log(`Genre Fusion: ${genre1} (Kick/Snare) + ${genre2} (Hats/Cymb/Toms)`);
+        console.log(`Fusion selected: ${genre1} (K/S) + ${genre2} (HH/C/T)`);
+        // The dropdown already shows "genre-fusion" because the user selected it.
+        // genreToGenerate is correctly "genre-fusion" for generatePattern()
     }
+    // If genreToGenerate is "experimental" (manually selected by user), it will also pass through.
 
-    currentPattern = generatePattern(selectedGenre, fusionPair);
+    currentPattern = generatePattern(genreToGenerate, fusionPair);
     updateVisualGrid();
     updateToneParts();
+
+    // Update BPM for the genre that was actually used for generation.
+    let genreForBpmUpdate = genreToGenerate;
+    if (genreToGenerate === "genre-fusion" && fusionPair.length > 0) {
+        genreForBpmUpdate = fusionPair[0]; // Use first genre of fusion pair for BPM
+    } else if (genreToGenerate === "genre-fusion") { // Fallback if fusion pair empty (shouldn't happen)
+        genreForBpmUpdate = "house";
+    }
+    // If genreToGenerate was a random one from "Generate All", it's already set correctly.
+    updateBpmForGenre(genreForBpmUpdate);
 }
+
+
+// The main logic is now inside handleGenerateWrapper's call to the modified handleGenerate.
 
 function handlePlayStop() {
     if (!currentPattern) { // Generate a pattern first if none exists
-        handleGenerate().then(() => {
-             if (currentPattern) togglePlayback(); // Then toggle
+        handleGenerateWrapper(false).then(() => { // isGenerateAllContext = false
+             if (currentPattern) togglePlayback();
         });
     } else {
         togglePlayback();
@@ -232,12 +267,29 @@ function togglePlayback() {
         playheadDiv.style.opacity = '0'; // Hide playhead when stopped
         document.querySelectorAll('.step.playing').forEach(cell => cell.classList.remove('playing'));
     } else {
-        Tone.Transport.start();
+        Tone.Transport.start(); // Restart from the beginning
         playStopButton.textContent = 'Stop';
         playheadDiv.style.opacity = '0.5'; // Show playhead
         setupPlayhead(); // Restart playhead scheduling
     }
     isPlaying = !isPlaying;
+}
+
+// Wrapper for handleGenerate to manage autoPlay flag and context
+async function handleGenerateWrapper(isGenerateAllContext = false) { // Renamed autoPlay to isGenerateAllContext
+    await handleGenerate(isGenerateAllContext); // Pass the context flag
+
+    if (isGenerateAllContext && currentPattern) { // Auto-play if "Generate All"
+        if (isPlaying) {
+            Tone.Transport.stop();
+        }
+        Tone.Transport.position = 0; // Restart from the beginning
+        Tone.Transport.start();
+        isPlaying = true;
+        playStopButton.textContent = 'Stop';
+        playheadDiv.style.opacity = '0.5';
+        setupPlayhead();
+    }
 }
 
 
@@ -252,8 +304,27 @@ function handleGenreChange() {
     } else {
         Tone.Transport.swing = 0; // No swing for others
     }
-    handleGenerate(); // Generate a new pattern for the selected genre
+    updateBpmForGenre(selectedGenre);
+    handleGenerateWrapper(false); // Do not auto-play on manual genre change
 }
+
+// --- BPM Update Function ---
+function updateBpmForGenre(genre) {
+    const genreSettings = GENRE_BPM_MAP[genre];
+    let newBpm = 120; // Default fallback
+
+    if (genreSettings) {
+        // Select a random BPM from the range if available, otherwise use default
+        if (genreSettings.range && genreSettings.range.length === 2) {
+            newBpm = Math.floor(Math.random() * (genreSettings.range[1] - genreSettings.range[0] + 1)) + genreSettings.range[0];
+        } else {
+            newBpm = genreSettings.default;
+        }
+    }
+    bpmInput.value = newBpm;
+    Tone.Transport.bpm.value = newBpm;
+}
+
 
 // --- Export Functions ---
 function exportMIDI() {
@@ -461,7 +532,7 @@ function init() {
     Tone.Transport.loopEnd = `${NUM_BARS}m`; // Set loop end for NUM_BARS measures
     Tone.Transport.bpm.value = parseInt(bpmInput.value, 10);
 
-    generateButton.addEventListener('click', handleGenerate);
+    generateButton.addEventListener('click', () => handleGenerateWrapper(true)); // Auto-play on "Generate All"
     playStopButton.addEventListener('click', handlePlayStop);
     bpmInput.addEventListener('change', handleBpmChange);
     bpmInput.addEventListener('input', handleBpmChange); // For more responsive BPM update
@@ -470,6 +541,7 @@ function init() {
     exportWavButton.addEventListener('click', exportWAV);
 
     // Generate an initial pattern on load
+    updateBpmForGenre(genreSelect.value); // Set initial BPM based on default selected genre
     handleGenreChange(); // This will call handleGenerate
 
     // Adjust playhead on window resize

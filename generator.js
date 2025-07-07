@@ -366,6 +366,21 @@ export const ALL_GENRES_INCLUDING_SPECIAL = [
     ...GENRE_LIST, "experimental", "genre-fusion"
 ];
 
+export const GENRE_BPM_MAP = {
+    "house": { default: 125, range: [118, 130] },
+    "techno": { default: 135, range: [125, 150] },
+    "hiphop": { default: 90, range: [80, 100] }, // Boom Bap
+    "trap": { default: 140, range: [130, 160] }, // Often uses half-time feel, so effective BPM can feel like 70-80
+    "rock": { default: 120, range: [90, 150] },
+    "funk": { default: 110, range: [95, 120] },
+    "reggaeton": { default: 95, range: [85, 105] },
+    "jazz": { default: 130, range: [100, 180] }, // Wide range for jazz
+    "bossa-nova": { default: 115, range: [100, 130] }, // Often more relaxed
+    "experimental": { default: 120, range: [70, 200] }, // Wildly variable
+    "genre-fusion": { default: 120, range: [90, 150] } // Generic fallback for fusion
+};
+
+
 // Simple test (run in browser console if testing this file standalone for basic output)
 // setTimeout(() => {
 //     console.log("House Pattern (4 bars):", generatePattern("house"));
