@@ -75,7 +75,31 @@ body {
     /* Let's try to make the container itself wider by default */
     /* Ensure the grid itself can scroll if content overflows its calculated size based on vw/minmax */
     overflow-x: auto;
+    /* Add a row for bar indicators */
+    grid-template-rows: auto repeat(auto-fit, minmax(20px, 1fr)); /* Bar row + instrument rows */
 }
+
+.bar-indicator-row {
+    display: contents; /* Makes its children part of the parent grid layout */
+}
+
+.bar-number {
+    grid-row: 1; /* Place in the first row of the main midi-grid */
+    text-align: center;
+    padding: 5px 0;
+    font-size: 0.8em;
+    color: #aaa;
+    background-color: #333; /* Slightly different background */
+    border-bottom: 1px solid #444;
+    /* Spanning is set by JS (gridColumn: span 16) */
+}
+
+.bar-header-empty { /* Empty cell above instrument labels in bar header row */
+    grid-row: 1;
+    background-color: #333;
+    border-bottom: 1px solid #444;
+}
+
 
 .container {
     width: 95%; /* Make container wider */
@@ -106,7 +130,29 @@ body {
     aspect-ratio: 1 / 1; /* Make cells square */
     cursor: pointer;
     transition: background-color 0.1s;
+    border-right: 1px solid #383838; /* Default subtle border */
 }
+
+.bar-separator-step {
+    border-right: 2px solid #666; /* Thicker, more visible border for bar separation */
+}
+
+/* For now, let's add border to the bar-number div and rely on that primarily */
+.bar-number {
+    grid-row: 1; /* Place in the first row of the main midi-grid */
+    text-align: center;
+    padding: 5px 0;
+    font-size: 0.8em;
+    color: #aaa;
+    background-color: #333; /* Slightly different background */
+    border-bottom: 1px solid #444;
+    border-right: 1px solid #555; /* Separator between bar numbers */
+    /* Spanning is set by JS (gridColumn: span 16) */
+}
+.bar-number:last-child {
+    border-right: none;
+}
+
 
 .step.active {
     background-color: #88ddff; /* Light blue for active steps */
@@ -120,10 +166,10 @@ body {
 
 #playhead {
     position: absolute;
-    top: 0;
-    left: 100px; /* Start after labels column */
-    width: 2px; /* Thin line */
-    height: 100%;
+    top: 0; /* Playhead should span the entire grid height, including new bar indicators */
+    left: 0; /* Initial X offset is handled by translateX in JS to match instrument label width */
+    width: 2px; /* This is the width of the playhead line itself, not the step cell */
+    height: 100%; /* Span full height */
     background-color: rgba(255, 255, 0, 0.7); /* Semi-transparent yellow */
     pointer-events: none; /* Don't interfere with clicks */
     z-index: 10;
@@ -156,9 +202,7 @@ body {
         /* min-width is removed to encourage fitting, scroll will appear if needed due to content */
         overflow-x: auto; /* Ensure scroll for grid itself if content overflows */
     }
-    #playhead {
-        left: 50px; /* Adjust for smaller labels */
-    }
+    /* Playhead 'left' is handled by JS transform */
     .instrument-label {
         font-size: 0.75em;
         padding: 6px; /* Slightly reduce padding */
@@ -171,9 +215,7 @@ body {
         grid-template-columns: 40px repeat(64, minmax(10px, 1fr)); /* Even smaller labels and steps */
         overflow-x: auto;
     }
-    #playhead {
-        left: 40px;
-    }
+    /* Playhead 'left' is handled by JS transform */
     .instrument-label {
         font-size: 0.7em;
         padding: 5px;

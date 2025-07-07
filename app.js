@@ -43,8 +43,21 @@ const synths = {
 };
 // Connect snare components (noise synth already connected)
 // synths.snare.noise.connect(synths.snare.membrane); // This is incorrect, synths don't have inputs. They are triggered in parallel.
-synths.snare.membrane.volume.value = -12; // Membrane is more subtle
-synths.snare.noise.volume.value = -6;
+// Initial volume settings (can be adjusted further based on testing)
+// Aiming for snare to be more prominent. Kick around -3dB to -0dB as a reference.
+// Snare components will be boosted. Other elements might be slightly reduced to create headroom.
+
+synths.kick.volume.value = -2; // Kick slightly less than max to leave room
+
+synths.snare.membrane.volume.value = -8; // Boosted membrane for more body
+synths.snare.noise.volume.value = -5;    // Boosted noise for more snap
+
+synths.hiHat.volume.value = -14;      // Hi-hats can be fairly quiet
+// synths.hiHat.filter.Q.value = 1; // Default Q is 1, can increase for more resonance if needed
+
+synths.crash.volume.value = -10;       // Crashes are naturally loud, keep them controlled
+
+synths.tom.volume.value = -9;          // Toms boosted slightly relative to previous
 
 
 // --- DOM Element References ---
@@ -68,6 +81,24 @@ const instrumentParts = {}; // To hold Tone.Part for each instrument
 // --- MIDI Grid Creation ---
 function createMidiGrid() {
     midiGridDiv.innerHTML = ''; // Clear existing grid
+
+    // Create Bar Indicator Row
+    const barIndicatorRow = document.createElement('div');
+    barIndicatorRow.classList.add('bar-indicator-row');
+    const emptyLabelCell = document.createElement('div'); // For alignment with instrument labels
+    emptyLabelCell.classList.add('instrument-label', 'bar-header-empty');
+    barIndicatorRow.appendChild(emptyLabelCell);
+
+    for (let bar = 0; bar < NUM_BARS; bar++) {
+        const barNumberDiv = document.createElement('div');
+        barNumberDiv.classList.add('bar-number');
+        barNumberDiv.textContent = `Bar ${bar + 1}`;
+        barNumberDiv.style.gridColumn = `span ${STEPS_PER_BAR}`;
+        barIndicatorRow.appendChild(barNumberDiv);
+    }
+    midiGridDiv.appendChild(barIndicatorRow);
+
+    // Create Instrument Rows and Step Cells
     INSTRUMENT_NAMES.forEach(instrumentName => {
         const labelDiv = document.createElement('div');
         labelDiv.classList.add('instrument-label');
@@ -79,6 +110,12 @@ function createMidiGrid() {
             stepDiv.classList.add('step');
             stepDiv.dataset.instrument = instrumentName;
             stepDiv.dataset.step = step;
+
+            // Add class for bar separator lines (on the right edge of steps 15, 31, 47)
+            if ((step + 1) % STEPS_PER_BAR === 0 && step < TOTAL_STEPS - 1) {
+                stepDiv.classList.add('bar-separator-step');
+            }
+
             // Allow toggling steps manually (optional, but good for interaction)
             stepDiv.addEventListener('click', () => {
                 if (currentPattern) {
@@ -94,8 +131,12 @@ function createMidiGrid() {
     const firstStepCell = midiGridDiv.querySelector('.step');
     if (firstStepCell) {
         playheadDiv.style.width = `${firstStepCell.offsetWidth}px`;
-        playheadDiv.style.opacity = '0.5'; // Make it a bit transparent
+        // Opacity is now handled by play/stop logic directly for initial show/hide
     }
+    // Initial playhead position needs to be set considering the label width
+    const labelWidth = midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+    playheadDiv.style.transform = `translateX(${labelWidth}px)`;
+    playheadDiv.style.opacity = '0'; // Start hidden
 }
 
 // --- Update Visual Grid from Pattern Data ---
@@ -159,8 +200,10 @@ function updateToneParts() {
 // --- Playhead Visualization ---
 let playheadEventId = null;
 function setupPlayhead() {
-    const stepWidth = midiGridDiv.querySelector('.step')?.offsetWidth || 30; // Fallback width
-    const labelWidth = midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 100;
+    const stepWidth = midiGridDiv.querySelector('.step')?.offsetWidth || 15; // Updated fallback
+    const labelWidth = midiGridDiv.querySelector('.instrument-label.bar-header-empty')?.offsetWidth || // Use the empty header cell for consistent width
+                       midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+
 
     if (playheadEventId !== null) {
         Tone.Transport.clear(playheadEventId);
@@ -169,11 +212,8 @@ function setupPlayhead() {
     playheadEventId = Tone.Transport.scheduleRepeat(time => {
         Tone.Draw.schedule(() => {
             const currentTick = Tone.Transport.ticks;
-            // Total ticks in the loop (NUM_BARS bars)
             const totalTicksInLoop = Tone.Transport.PPQ * 4 * NUM_BARS;
-            // Progress within the entire loop
             const progress = (currentTick % totalTicksInLoop) / totalTicksInLoop;
-            // Playhead position spans the entire grid width
             const playheadX = labelWidth + (progress * (stepWidth * TOTAL_STEPS));
             playheadDiv.style.transform = `translateX(${playheadX}px)`;
 
@@ -419,8 +459,13 @@ async function exportWAV() {
                 tom: new Tone.MembraneSynth({envelope: {decay:0.25}}).toDestination()
             };
             // offlineSynths.snare.noise.connect(offlineSynths.snare.membrane); // This is incorrect
-            offlineSynths.snare.membrane.volume.value = -12;
-            offlineSynths.snare.noise.volume.value = -6;
+            // Apply similar volume adjustments to offline synths
+            offlineSynths.kick.volume.value = -2;
+            offlineSynths.snare.membrane.volume.value = -8;
+            offlineSynths.snare.noise.volume.value = -5;
+            offlineSynths.hiHat.volume.value = -14;
+            offlineSynths.crash.volume.value = -10;
+            offlineSynths.tom.volume.value = -9;
 
 
             INSTRUMENT_NAMES.forEach(instrumentName => {
