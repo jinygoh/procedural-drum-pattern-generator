@@ -60,7 +60,9 @@ const playheadDiv = document.getElementById('playhead');
 // --- Application State ---
 let currentPattern = null;
 let isPlaying = false;
-const STEPS = 16;
+const STEPS_PER_BAR = 16;
+const NUM_BARS = 4;
+const TOTAL_STEPS = STEPS_PER_BAR * NUM_BARS; // 64 steps
 const instrumentParts = {}; // To hold Tone.Part for each instrument
 
 // --- MIDI Grid Creation ---
@@ -72,7 +74,7 @@ function createMidiGrid() {
         labelDiv.textContent = instrumentName.charAt(0).toUpperCase() + instrumentName.slice(1);
         midiGridDiv.appendChild(labelDiv);
 
-        for (let step = 0; step < STEPS; step++) {
+        for (let step = 0; step < TOTAL_STEPS; step++) { // Use TOTAL_STEPS
             const stepDiv = document.createElement('div');
             stepDiv.classList.add('step');
             stepDiv.dataset.instrument = instrumentName;
@@ -122,7 +124,11 @@ function updateToneParts() {
         const partData = [];
         currentPattern[instrumentName].forEach((isActive, step) => {
             if (isActive) {
-                partData.push({ time: `0:0:${step}` }); // Time as Bars:Beats:Sixteenths
+                // Calculate time correctly for 64 steps
+                const bar = Math.floor(step / STEPS_PER_BAR);
+                const beatInBar = Math.floor((step % STEPS_PER_BAR) / 4);
+                const sixteenthInBeat = step % 4;
+                partData.push({ time: `${bar}:${beatInBar}:${sixteenthInBeat}` });
             }
         });
 
@@ -145,7 +151,7 @@ function updateToneParts() {
             }
         }, partData).start(0);
         instrumentParts[instrumentName].loop = true;
-        instrumentParts[instrumentName].loopEnd = '1m'; // Loop for one measure
+        instrumentParts[instrumentName].loopEnd = `${NUM_BARS}m`; // Loop for NUM_BARS measures (e.g., '4m')
     });
 }
 
@@ -163,15 +169,19 @@ function setupPlayhead() {
     playheadEventId = Tone.Transport.scheduleRepeat(time => {
         Tone.Draw.schedule(() => {
             const currentTick = Tone.Transport.ticks;
-            const ticksPerBar = Tone.Transport.PPQ * 4; // PPQ = pulses (ticks) per quarter note
-            const progress = (currentTick % ticksPerBar) / ticksPerBar;
-            const playheadX = labelWidth + (progress * (stepWidth * STEPS));
+            // Total ticks in the loop (NUM_BARS bars)
+            const totalTicksInLoop = Tone.Transport.PPQ * 4 * NUM_BARS;
+            // Progress within the entire loop
+            const progress = (currentTick % totalTicksInLoop) / totalTicksInLoop;
+            // Playhead position spans the entire grid width
+            const playheadX = labelWidth + (progress * (stepWidth * TOTAL_STEPS));
             playheadDiv.style.transform = `translateX(${playheadX}px)`;
 
             // Highlight playing cells
-            const currentStep = Math.floor(progress * STEPS);
+            // Current step within the entire 64-step sequence
+            const currentGlobalStep = Math.floor(progress * TOTAL_STEPS);
             document.querySelectorAll('.step.playing').forEach(cell => cell.classList.remove('playing'));
-            document.querySelectorAll(`.step[data-step='${currentStep}']`).forEach(cell => {
+            document.querySelectorAll(`.step[data-step='${currentGlobalStep}']`).forEach(cell => {
                 if (cell.classList.contains('active')) { // Only highlight if it's an active note
                     cell.classList.add('playing');
                 }
@@ -272,7 +282,20 @@ function exportMIDI() {
         const events = [];
         currentPattern[instrumentName].forEach((isActive, step) => {
             if (isActive) {
-                const startTimeTicks = (step / STEPS) * Tone.Transport.PPQ * 4; // Calculate ticks
+                // Calculate ticks based on TOTAL_STEPS for a 4-bar loop
+                // Each step is a 16th note. Tone.Transport.PPQ is ticks per quarter note.
+                // So, ticks per 16th note = Tone.Transport.PPQ / 4.
+                // startTimeTicks = step * (Tone.Transport.PPQ / 4)
+                // However, MidiWriter's startTick is often based on a PPQ defined for the track.
+                // If MidiWriter's default PPQ (often 128 or higher) is different from Tone's, direct scaling might be needed.
+                // For simplicity, let's assume MidiWriter uses a PPQ where '16' duration means a 16th note.
+                // The startTick needs to be scaled according to the number of 16th notes.
+                // Each bar has 16 sixteenths. Total sixteenths = TOTAL_STEPS.
+                // If Tone.Transport.PPQ is, for example, 192 (default for Tone.js), then a 16th note is 192/4 = 48 ticks.
+                // MidiWriter.NoteEvent startTick expects absolute ticks from the start of the track.
+                const ticksPerSixteenth = Tone.Transport.PPQ / 4;
+                const startTimeTicks = step * ticksPerSixteenth;
+
                  events.push(new MidiWriter.NoteEvent({
                     pitch: [midiNote],
                     duration: '16', // 16th note duration (MidiWriter format)
@@ -354,7 +377,7 @@ async function exportWAV() {
             offlineTransport.bpm.value = Tone.Transport.bpm.value;
             offlineTransport.swing = Tone.Transport.swing; // Apply swing if active
             offlineTransport.start();
-        }, Tone.Time('1m').toSeconds()); // Render for the duration of one measure
+        }, Tone.Time(`${NUM_BARS}m`).toSeconds()); // Render for the duration of NUM_BARS measures
 
         // Convert AudioBuffer to WAV
         const wavBlob = audioBufferToWav(buffer);
@@ -435,7 +458,7 @@ function audioBufferToWav(buffer) {
 function init() {
     createMidiGrid();
     Tone.Transport.loop = true;
-    Tone.Transport.loopEnd = '1m';
+    Tone.Transport.loopEnd = `${NUM_BARS}m`; // Set loop end for NUM_BARS measures
     Tone.Transport.bpm.value = parseInt(bpmInput.value, 10);
 
     generateButton.addEventListener('click', handleGenerate);

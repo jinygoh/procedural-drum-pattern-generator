@@ -2,10 +2,12 @@
 
 export const INSTRUMENTS = ['kick', 'snare', 'hiHat', 'crash', 'tom'];
 const STEPS_PER_BAR = 16;
+const NUM_BARS = 4;
+const TOTAL_STEPS = STEPS_PER_BAR * NUM_BARS;
 
 // Helper function to create an empty pattern for one instrument
-function createEmptyInstrumentPattern() {
-    return Array(STEPS_PER_BAR).fill(0);
+function createEmptyInstrumentPattern(steps = TOTAL_STEPS) {
+    return Array(steps).fill(0);
 }
 
 // Helper function to create a full empty pattern
@@ -17,515 +19,335 @@ function createEmptyPattern() {
     return pattern;
 }
 
-// --- Genre Specific Generation Logics ---
-
-// House: Four-on-the-floor kick, snare on 2 & 4, off-beat 16th-note hi-hats.
-function generateHousePattern(pattern) {
-    // Kick: 1, 5, 9, 13 (four on the floor)
-    for (let i = 0; i < STEPS_PER_BAR; i += 4) {
-        pattern.kick[i] = 1;
-    }
-
-    // Snare: 5, 13 (on 2 and 4)
-    pattern.snare[4] = 1;
-    pattern.snare[12] = 1;
-
-    // Hi-Hat: Off-beat 16ths (e.g., 3, 7, 11, 15) or every 8th/16th
+// Helper function to generate a generic fill for the last bar
+function addGenericFill(pattern, instrument, barOffset, density = 0.5, includeSnare = true, includeToms = true) {
+    const fillStartStep = barOffset + STEPS_PER_BAR * (NUM_BARS - 1);
     for (let i = 0; i < STEPS_PER_BAR; i++) {
-        if (i % 2 !== 0) { // Off-beat 8ths
-             if (Math.random() < 0.8) pattern.hiHat[i] = 1;
+        if (includeSnare && Math.random() < density * 0.6) { // Snare hits more likely
+            pattern.snare[fillStartStep + i] = 1;
         }
-        // Add some 16ths for variation
-        if (i % 2 === 0 && Math.random() < 0.2) { // On-beat 8ths, less likely
-            pattern.hiHat[i] = 1;
+        if (includeToms && Math.random() < density * 0.5) {
+            pattern.tom[fillStartStep + i] = 1;
+        }
+        // Occasional kick in fills
+        if (Math.random() < density * 0.2) {
+            pattern.kick[fillStartStep + i] = 1;
+        }
+        // Hi-hats can also be part of fills
+        if (Math.random() < density * 0.4) {
+            pattern.hiHat[fillStartStep + i] = 1;
         }
     }
-
-    // Crash: Occasionally on the 1
-    if (Math.random() < 0.25) pattern.crash[0] = 1;
-
-    // Toms: Sparse fills
-    if (Math.random() < 0.2) {
-        const tomPlacement = Math.floor(Math.random() * 3) + 12; // last quarter bar
-        pattern.tom[tomPlacement] = 1;
-        if (Math.random() < 0.5 && tomPlacement < 15) pattern.tom[tomPlacement + 1] = (Math.random() < 0.7 ? 1:0);
-    }
-    return pattern;
+    // Ensure a crash at the beginning of the fill bar or main loop, if fill is active
+    if (Math.random() < 0.6) pattern.crash[fillStartStep] = 1;
+    else if (Math.random() < 0.3) pattern.crash[0] =1; // Or at the very beginning of the 4 bars
 }
 
-// Techno: Similar to House but often faster, more driving.
-function generateTechnoPattern(pattern) {
-    // Kick: Almost always four on the floor, very consistent
-    for (let i = 0; i < STEPS_PER_BAR; i += 4) {
-        pattern.kick[i] = 1;
+
+// --- Genre Specific Generation Logics (now for 1 bar, to be repeated) ---
+// These functions will generate a single bar pattern, which will then be tiled
+// and a fill will be added in the main generatePattern function.
+
+function generateSingleBarHousePattern(barPattern) {
+    for (let i = 0; i < STEPS_PER_BAR; i += 4) barPattern.kick[i] = 1;
+    barPattern.snare[4] = 1; barPattern.snare[12] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i++) {
+        if (i % 2 !== 0 && Math.random() < 0.8) barPattern.hiHat[i] = 1;
+        if (i % 2 === 0 && Math.random() < 0.2) barPattern.hiHat[i] = 1;
     }
-    // Sometimes a syncopated kick
-    if (Math.random() < 0.15) {
-        pattern.kick[Math.random() < 0.5 ? 6 : 14] = 1;
-    }
+    if (Math.random() < 0.1) barPattern.crash[0] = 1; // Less frequent for single bar
+    return barPattern;
+}
 
-
-    // Snare: Usually on 2 & 4, sometimes with off-beat accents
-    pattern.snare[4] = 1;
-    pattern.snare[12] = 1;
-    if (Math.random() < 0.1) pattern.snare[Math.random() < 0.5 ? 7 : 15] =1;
-
-
-    // Hi-Hat: Consistent 16ths or driving 8ths.
+function generateSingleBarTechnoPattern(barPattern) {
+    for (let i = 0; i < STEPS_PER_BAR; i += 4) barPattern.kick[i] = 1;
+    if (Math.random() < 0.15) barPattern.kick[Math.random() < 0.5 ? 6 : 14] = 1;
+    barPattern.snare[4] = 1; barPattern.snare[12] = 1;
+    if (Math.random() < 0.1) barPattern.snare[Math.random() < 0.5 ? 7 : 15] =1;
     const hiHatMode = Math.random();
-    if (hiHatMode < 0.6) { // Consistent 16ths
-        for (let i = 0; i < STEPS_PER_BAR; i++) {
-            if (Math.random() < 0.85) pattern.hiHat[i] = 1;
-        }
-    } else { // Driving 8ths (on beats or off-beats)
-        const offBeat = Math.random() < 0.5;
-        for (let i = offBeat ? 1 : 0; i < STEPS_PER_BAR; i += 2) {
-             if (Math.random() < 0.9) pattern.hiHat[i] = 1;
-        }
-    }
-
-    // Crash: Rarely, maybe on the 1 every few bars (simulated with low probability)
-    if (Math.random() < 0.15) pattern.crash[0] = 1;
-
-    // Toms: Minimal, often single hits for accents
-    if (Math.random() < 0.15) {
-        pattern.tom[Math.floor(Math.random() * STEPS_PER_BAR)] = 1;
-    }
-    return pattern;
+    if (hiHatMode < 0.6) { for (let i = 0; i < STEPS_PER_BAR; i++) if (Math.random() < 0.85) barPattern.hiHat[i] = 1; }
+    else { const offBeat = Math.random() < 0.5; for (let i = offBeat ? 1 : 0; i < STEPS_PER_BAR; i += 2) if (Math.random() < 0.9) barPattern.hiHat[i] = 1; }
+    if (Math.random() < 0.05) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Hip-Hop (90s Boom Bap): Syncopated, often swung kick/snare patterns.
-function generateHipHopPattern(pattern) {
-    // Kick: Syncopated, not strictly on grid. Common on 1, and various 8th/16th offbeats.
-    pattern.kick[0] = 1; // Usually a kick on 1
-    if (Math.random() < 0.7) pattern.kick[Math.random() < 0.5 ? 3:2] = 1; // e.g., 1_e, 1_a
-    if (Math.random() < 0.6) pattern.kick[Math.random() < 0.5 ? 5:6] = 1; // near the 2
-    if (Math.random() < 0.8) pattern.kick[8] = 1; // Often a kick on 3
-    if (Math.random() < 0.5) pattern.kick[Math.random() < 0.5 ? 10:11] = 1;
-    if (Math.random() < 0.7) pattern.kick[Math.random() < 0.5 ? 13:14] = 1;
-
-
-    // Snare: Typically on 2 and 4, but can have ghost notes or slight pushes/pulls.
-    pattern.snare[4] = 1;
-    pattern.snare[12] = 1;
-    if (Math.random() < 0.3) pattern.snare[Math.random() < 0.5 ? 11 : 13] = (Math.random() < 0.5 ? 1:0); // Ghost before/after main snare
-
-    // Hi-Hat: Often straight 8ths or 16ths, sometimes with swing. Can be sparse.
+function generateSingleBarHipHopPattern(barPattern) {
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.7) barPattern.kick[Math.random() < 0.5 ? 3:2] = 1;
+    if (Math.random() < 0.6) barPattern.kick[Math.random() < 0.5 ? 5:6] = 1;
+    if (Math.random() < 0.8) barPattern.kick[8] = 1;
+    if (Math.random() < 0.5) barPattern.kick[Math.random() < 0.5 ? 10:11] = 1;
+    if (Math.random() < 0.7) barPattern.kick[Math.random() < 0.5 ? 13:14] = 1;
+    barPattern.snare[4] = 1; barPattern.snare[12] = 1;
+    if (Math.random() < 0.3) barPattern.snare[Math.random() < 0.5 ? 11 : 13] = (Math.random() < 0.5 ? 1:0);
     const hiHatDensity = Math.random();
-    if (hiHatDensity < 0.4) { // Sparse 8ths
-        for (let i = 0; i < STEPS_PER_BAR; i += 2) {
-            if (Math.random() < 0.6) pattern.hiHat[i] = 1;
-        }
-    } else if (hiHatDensity < 0.8) { // Fuller 8ths/16ths
-        for (let i = 0; i < STEPS_PER_BAR; i++) {
-            if (i % 2 === 0 && Math.random() < 0.7) pattern.hiHat[i] = 1; // 8ths
-            else if (i % 2 !== 0 && Math.random() < 0.3) pattern.hiHat[i] = 1; // 16th fills
-        }
-    } // Else, very sparse or no hi-hats
-
-    // Crash: Infrequent, for emphasis.
-    if (Math.random() < 0.2) pattern.crash[0] = 1;
-
-    // Toms: Rare, simple fills.
-    if (Math.random() < 0.1) {
-        const tomStart = Math.floor(Math.random() * 12);
-        pattern.tom[tomStart] = 1;
-        if (Math.random() < 0.5) pattern.tom[tomStart + 2] = 1;
-    }
-    return pattern;
+    if (hiHatDensity < 0.4) { for (let i = 0; i < STEPS_PER_BAR; i += 2) if (Math.random() < 0.6) barPattern.hiHat[i] = 1; }
+    else if (hiHatDensity < 0.8) { for (let i = 0; i < STEPS_PER_BAR; i++) { if (i % 2 === 0 && Math.random() < 0.7) barPattern.hiHat[i] = 1; else if (i % 2 !== 0 && Math.random() < 0.3) barPattern.hiHat[i] = 1; }}
+    if (Math.random() < 0.1) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Trap: Sparse, heavy kick, syncopated snares/claps, complex hi-hats.
-function generateTrapPattern(pattern) {
-    // Kick: Sparse, syncopated, often an 808 sound. Focus on beats 1 and offbeats.
-    pattern.kick[0] = 1; // Strong kick on 1
-    if (Math.random() < 0.6) pattern.kick[6] = 1; // e.g., before the snare on 2
-    if (Math.random() < 0.4) pattern.kick[7] = 1;
-    if (Math.random() < 0.7) pattern.kick[10] = 1; // Syncopated kick after 3
-    if (Math.random() < 0.5) pattern.kick[14] = 1;
-
-    // Snare/Clap: Often on 3, or syncopated around 2 and 4.
-    if (Math.random() < 0.8) pattern.snare[4] = 1; // Traditional spot
-    else pattern.snare[6] = 1; // Syncopated
-    pattern.snare[12] = 1; // Usually a strong one on 4 (equivalent of 3 in double time)
-    if (Math.random() < 0.3) pattern.snare[Math.floor(Math.random()*3) + 13] = 1; // Syncopated end of bar
-
-    // Hi-Hat: Complex patterns - 8ths, 16ths, triplets, 32nds.
-    // Simplified here: mix of 8ths and 16ths, with occasional faster bursts.
+function generateSingleBarTrapPattern(barPattern) {
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.6) barPattern.kick[6] = 1;
+    if (Math.random() < 0.4) barPattern.kick[7] = 1;
+    if (Math.random() < 0.7) barPattern.kick[10] = 1;
+    if (Math.random() < 0.5) barPattern.kick[14] = 1;
+    if (Math.random() < 0.8) barPattern.snare[4] = 1; else barPattern.snare[6] = 1;
+    barPattern.snare[12] = 1;
+    if (Math.random() < 0.3) barPattern.snare[Math.floor(Math.random()*3) + 13] = 1;
     for (let i = 0; i < STEPS_PER_BAR; i++) {
-        if (i % 2 === 0 && Math.random() < 0.7) pattern.hiHat[i] = 1; // 8th notes
-        else if (Math.random() < 0.5) pattern.hiHat[i] = 1; // 16th notes
-
-        // Simulate occasional fast rolls (e.g., two 32nds = one 16th slot)
-        if (Math.random() < 0.15 && i < STEPS_PER_BAR -1) {
-            pattern.hiHat[i] = 1;
-            pattern.hiHat[i+1] = (Math.random() < 0.8 ? 1:0) ; // Could be a 32nd, or just a dense 16th
-            i++; // Skip next step as it's part of the "roll"
-        }
+        if (i % 2 === 0 && Math.random() < 0.7) barPattern.hiHat[i] = 1;
+        else if (Math.random() < 0.5) barPattern.hiHat[i] = 1;
+        if (Math.random() < 0.15 && i < STEPS_PER_BAR -1) { barPattern.hiHat[i] = 1; barPattern.hiHat[i+1] = (Math.random() < 0.8 ? 1:0) ; i++; }
     }
-    // Ensure some gaps for breathing room
-    for(let i=0; i<STEPS_PER_BAR; i++) {
-        if(Math.random() < 0.1) pattern.hiHat[i] = 0;
-    }
-
-
-    // Crash: Infrequent, often at start or major transitions.
-    if (Math.random() < 0.15) pattern.crash[0] = 1;
-
-    // Toms: Very rare in typical trap, more common in subgenres.
-    if (Math.random() < 0.05) pattern.tom[Math.floor(Math.random() * STEPS_PER_BAR)] = 1;
-
-    return pattern;
+    for(let i=0; i<STEPS_PER_BAR; i++) if(Math.random() < 0.1) barPattern.hiHat[i] = 0;
+    if (Math.random() < 0.05) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Rock: Kick on 1 & 3, snare on 2 & 4, steady 8th-note hi-hats.
-function generateRockPattern(pattern) {
-    // Kick: 1 & 3, sometimes with variations.
-    pattern.kick[0] = 1;
-    pattern.kick[8] = 1;
-    if (Math.random() < 0.3) pattern.kick[2] = 1; // "and" of 1
-    if (Math.random() < 0.2) pattern.kick[6] = 1; // before 3
-    if (Math.random() < 0.2) pattern.kick[10] = 1; // "and" of 3
-    if (Math.random() < 0.1) pattern.kick[14] = 1; // before 1 of next bar
-
-    // Snare: Solid 2 & 4.
-    pattern.snare[4] = 1;
-    pattern.snare[12] = 1;
-
-    // Hi-Hat: Steady 8th notes.
-    for (let i = 0; i < STEPS_PER_BAR; i += 2) {
-        if (Math.random() < 0.9) pattern.hiHat[i] = 1;
-    }
-    // Occasional open hi-hat or slightly more complex rhythm
-    if (Math.random() < 0.2) {
-        const openHatPos = (Math.floor(Math.random()*4) * 2) + 1; // Off-beat 8th
-        if(openHatPos < STEPS_PER_BAR) pattern.hiHat[openHatPos] = 1; // Represent as closed for now
-    }
-
-    // Crash: Often on 1, sometimes at the end of fills.
-    if (Math.random() < 0.3) pattern.crash[0] = 1;
-
-    // Toms: Used for fills, often at the end of a phrase (bar).
-    if (Math.random() < 0.3) {
-        const fillStart = Math.random() < 0.5 ? 12 : 14;
-        for (let i = fillStart; i < STEPS_PER_BAR; i++) {
-            if (Math.random() < 0.6) pattern.tom[i] = 1;
-        }
-    }
-    return pattern;
+function generateSingleBarRockPattern(barPattern) {
+    barPattern.kick[0] = 1; barPattern.kick[8] = 1;
+    if (Math.random() < 0.3) barPattern.kick[2] = 1;
+    if (Math.random() < 0.2) barPattern.kick[6] = 1;
+    if (Math.random() < 0.2) barPattern.kick[10] = 1;
+    if (Math.random() < 0.1) barPattern.kick[14] = 1;
+    barPattern.snare[4] = 1; barPattern.snare[12] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i += 2) if (Math.random() < 0.9) barPattern.hiHat[i] = 1;
+    if (Math.random() < 0.2) { const openHatPos = (Math.floor(Math.random()*4) * 2) + 1; if(openHatPos < STEPS_PER_BAR) barPattern.hiHat[openHatPos] = 1; }
+    if (Math.random() < 0.15) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Funk: Highly syncopated kick and snare, groovy 16th-note hi-hats.
-function generateFunkPattern(pattern) {
-    // Kick: Highly syncopated. Focus on 16th note grooves.
-    pattern.kick[0] = 1; // Often on 1
-    for (let i = 1; i < STEPS_PER_BAR; i++) {
-        if (Math.random() < 0.25) pattern.kick[i] = 1; // Higher chance for syncopation
-    }
-    // Ensure some common funk anchor points
-    if (Math.random() < 0.6) pattern.kick[6] = 1; // e.g., "e of 2"
-    if (Math.random() < 0.5) pattern.kick[10] = 1; // e.g., "e of 3"
-
-    // Snare: Syncopated, ghost notes common. Standard 2 & 4 are anchors.
-    pattern.snare[4] = 1;
-    pattern.snare[12] = 1;
-    for (let i = 0; i < STEPS_PER_BAR; i++) {
-        if (i !== 4 && i !== 12 && Math.random() < 0.15) { // Ghost notes
-            pattern.snare[i] = 1;
-        }
-    }
-
-    // Hi-Hat: Busy 16th notes, sometimes with accents or openings.
-    for (let i = 0; i < STEPS_PER_BAR; i++) {
-        if (Math.random() < 0.75) pattern.hiHat[i] = 1;
-    }
-    // Create some gaps for groove
-    if(Math.random() < 0.5) pattern.hiHat[Math.floor(Math.random()*STEPS_PER_BAR)] = 0;
-    if(Math.random() < 0.5) pattern.hiHat[Math.floor(Math.random()*STEPS_PER_BAR)] = 0;
-
-
-    // Crash: Used for accents, not too frequent.
-    if (Math.random() < 0.2) pattern.crash[Math.random() < 0.5 ? 0 : Math.floor(Math.random()*STEPS_PER_BAR)] = 1;
-
-    // Toms: Short, syncopated fills.
-    if (Math.random() < 0.25) {
-        const tomStart = Math.floor(Math.random() * (STEPS_PER_BAR - 3));
-        pattern.tom[tomStart] = 1;
-        if (Math.random() < 0.7) pattern.tom[tomStart + (Math.random() < 0.5 ? 1:2)] = 1;
-    }
-    return pattern;
+function generateSingleBarFunkPattern(barPattern) {
+    barPattern.kick[0] = 1;
+    for (let i = 1; i < STEPS_PER_BAR; i++) if (Math.random() < 0.25) barPattern.kick[i] = 1;
+    if (Math.random() < 0.6) barPattern.kick[6] = 1;
+    if (Math.random() < 0.5) barPattern.kick[10] = 1;
+    barPattern.snare[4] = 1; barPattern.snare[12] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i++) if (i !== 4 && i !== 12 && Math.random() < 0.15) barPattern.snare[i] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i++) if (Math.random() < 0.75) barPattern.hiHat[i] = 1;
+    if(Math.random() < 0.5) barPattern.hiHat[Math.floor(Math.random()*STEPS_PER_BAR)] = 0;
+    if(Math.random() < 0.5) barPattern.hiHat[Math.floor(Math.random()*STEPS_PER_BAR)] = 0;
+    if (Math.random() < 0.1) barPattern.crash[Math.random() < 0.5 ? 0 : Math.floor(Math.random()*STEPS_PER_BAR)] = 1;
+    return barPattern;
 }
 
-// Reggaeton: Dembow rhythm (kick: 1, 2+, 3, 4+; snare: 2, 3+, 4).
-function generateReggaetonPattern(pattern) {
-    // Kick: Classic Dembow kick pattern
-    pattern.kick[0] = 1; // 1
-    // pattern.kick[3] = 1; // "a" of 1 (optional variation)
-    pattern.kick[4] = 1; // 2 (often, or implied by snare) - variation: kick on 2+, snare on 2
-    pattern.kick[6] = 1; // "and" of 2 (2+)
-    pattern.kick[8] = 1; // 3
-    pattern.kick[10] = 1; // "and" of 3 (3+) - variation: kick on 3, snare on 3+
-    // pattern.kick[12] = 1; // 4 (often, or implied by snare)
-    pattern.kick[14] = 1; // "and" of 4 (4+)
-
-
-    // Snare: Classic Dembow snare/rimshot pattern
-    // Standard: Snare on 2, 3+, 4
-    // Variation 1: Snare on 2, + of 2, + of 3, + of 4
-    // Variation 2 (common): Snare on 2, 3+, 4
-    // Let's go with a common one: snare on beats 2 and 4, with an accent on the 'and' of beat 2 or 3.
-    // Simplified Dembow: Kick on 1, x, x, x, Snare on x, 2, x, 4
-    // Kick: 1, 2+, 3, 4+ (0, 6, 8, 14)
-    // Snare: 2, 3+, 4 (4, 10, 12) - this is a common variant
-
-    // Let's try the "tumpa-tumpa" feel:
-    // Kick on all quarter notes is foundational
-    for(let i=0; i<STEPS_PER_BAR; i+=4) pattern.kick[i] = 1;
-
-    // Snare provides the characteristic syncopation
-    pattern.snare[3] = 1; // "a" of 1
-    pattern.snare[7] = 1; // "a" of 2
-    pattern.snare[11] = 1; // "a" of 3
-    pattern.snare[14] = 1; // "e" of 4 (or 15 for "a" of 4)
-
-    // Hi-Hat: Usually straight 8ths or 16ths.
-    for (let i = 0; i < STEPS_PER_BAR; i += 2) { // 8th notes
-        if (Math.random() < 0.8) pattern.hiHat[i] = 1;
-    }
-
-    // Crash: Rarely.
-    if (Math.random() < 0.1) pattern.crash[0] = 1;
-
-    // Toms: Can be used for small fills, often syncopated.
-    if (Math.random() < 0.15) {
-        pattern.tom[Math.random() < 0.5 ? 5:7] = 1;
-        pattern.tom[Math.random() < 0.5 ? 13:15] = 1;
-    }
-    return pattern;
+function generateSingleBarReggaetonPattern(barPattern) {
+    for(let i=0; i<STEPS_PER_BAR; i+=4) barPattern.kick[i] = 1;
+    barPattern.snare[3] = 1; barPattern.snare[7] = 1; barPattern.snare[11] = 1; barPattern.snare[14] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i += 2) if (Math.random() < 0.8) barPattern.hiHat[i] = 1;
+    if (Math.random() < 0.05) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Jazz (Swing): Sparse ride/hihat, kick "feathering", snare "comping".
-// Note: Actual swing feel is applied by Tone.Transport.swing, this generates placement.
-function generateJazzPattern(pattern) {
-    // Kick: Light accents ("feathering"), often not on main beats.
-    // Typically very sparse.
-    if (Math.random() < 0.3) pattern.kick[0] = 1; // Sometimes on 1
-    const kickPlacements = [3, 7, 10, 11, 14, 15]; // Possible off-beats for feathering
-    kickPlacements.forEach(p => {
-        if (Math.random() < 0.15) pattern.kick[p] = 1;
-    });
-
-    // Snare: Accents ("comping"), irregular and syncopated.
+function generateSingleBarJazzPattern(barPattern) {
+    if (Math.random() < 0.3) barPattern.kick[0] = 1;
+    const kickPlacements = [3, 7, 10, 11, 14, 15];
+    kickPlacements.forEach(p => { if (Math.random() < 0.15) barPattern.kick[p] = 1; });
     const snarePlacements = [2, 3, 5, 6, 7, 9, 10, 11, 13, 14, 15];
-    snarePlacements.forEach(p => {
-        if (Math.random() < 0.12) pattern.snare[p] = 1; // Low probability for sparse comping
-    });
-    if(pattern.snare.every(s => s === 0) && Math.random() < 0.5) { // Ensure at least one snare hit sometimes
-        pattern.snare[Math.random() < 0.5 ? 4 : 12] = 1; // Default to 2 or 4 if totally empty
-    }
-
-
-    // Hi-Hat: Simulating ride cymbal pattern (e.g., "ching-chicka-ching").
-    // Basic swing ride: 1, 2+, 3, 4+ (0, 3, 4, 7, 8, 11, 12, 15 in 8th notes if straight)
-    // In 16ths: 0, (2), 3, 4, (6), 7, 8, (10), 11, 12, (14), 15
-    // Let's simplify to main beats and their upbeats for swing feel
-    pattern.hiHat[0] = 1; // Beat 1
-    if (Math.random() < 0.8) pattern.hiHat[3] = 1; // Upbeat of 1 (will be swung)
-    pattern.hiHat[4] = 1; // Beat 2
-    if (Math.random() < 0.8) pattern.hiHat[7] = 1; // Upbeat of 2
-    pattern.hiHat[8] = 1; // Beat 3
-    if (Math.random() < 0.8) pattern.hiHat[11] = 1; // Upbeat of 3
-    pattern.hiHat[12] = 1; // Beat 4
-    if (Math.random() < 0.8) pattern.hiHat[15] = 1; // Upbeat of 4
-    // Sometimes hi-hat on 2 and 4 (pedal)
-    if(Math.random() < 0.4) {
-        pattern.hiHat[4] = 1;
-        pattern.hiHat[12] = 1;
-    }
-
-
-    // Crash: Very rare, usually for specific accents.
-    if (Math.random() < 0.05) pattern.crash[0] = 1;
-
-    // Toms: Almost never in traditional swing comping, more in fills between sections.
-    // For a one-bar pattern, keep it minimal or none.
-    if (Math.random() < 0.05) pattern.tom[Math.floor(Math.random() * STEPS_PER_BAR)] = 1;
-    return pattern;
+    snarePlacements.forEach(p => { if (Math.random() < 0.12) barPattern.snare[p] = 1; });
+    if(barPattern.snare.every(s => s === 0) && Math.random() < 0.5) barPattern.snare[Math.random() < 0.5 ? 4 : 12] = 1;
+    barPattern.hiHat[0] = 1; if (Math.random() < 0.8) barPattern.hiHat[3] = 1;
+    barPattern.hiHat[4] = 1; if (Math.random() < 0.8) barPattern.hiHat[7] = 1;
+    barPattern.hiHat[8] = 1; if (Math.random() < 0.8) barPattern.hiHat[11] = 1;
+    barPattern.hiHat[12] = 1; if (Math.random() < 0.8) barPattern.hiHat[15] = 1;
+    if(Math.random() < 0.4) { barPattern.hiHat[4] = 1; barPattern.hiHat[12] = 1; }
+    if (Math.random() < 0.02) barPattern.crash[0] = 1; // Very rare for single bar context
+    return barPattern;
 }
 
-// Bossa Nova: Clave-based, syncopated.
-function generateBossaNovaPattern(pattern) {
-    // Kick: Often syncopated, based on surdo pattern.
-    // Common: 1, + of 2, (3), + of 4  (0, 7, (8), 15)
-    pattern.kick[0] = 1;
-    if (Math.random() < 0.7) pattern.kick[7] = 1; // "and" of 2
-    if (Math.random() < 0.4) pattern.kick[8] = 1; // on 3
-    if (Math.random() < 0.7) pattern.kick[15] = 1; // "and" of 4 (or 14 for "e")
-
-    // Snare: Often rim clicks, follows clave or side-stick pattern.
-    // 3-2 clave on side stick: 0, 3, 6, 10, 14 (as 8th notes)
-    // In 16ths: 0, 2, 4, 6, 7, 10, 11, 14, 15 (approx)
-    // Let's use a simplified cross-stick pattern: typically on 2 and 4, or syncopated.
-    // A common bossa snare/rim pattern:
-    pattern.snare[2] = 1;
-    pattern.snare[5] = 1;
-    pattern.snare[8] = 1;
-    pattern.snare[11] = 1;
-    pattern.snare[14] = 1;
-
-
-    // Hi-Hat: Continuous 8th notes, sometimes with slight accents.
-    for (let i = 0; i < STEPS_PER_BAR; i += 2) {
-        if (Math.random() < 0.9) pattern.hiHat[i] = 1;
-    }
-    // Add some 16th flavour
-    if(Math.random() < 0.3) pattern.hiHat[3] = 1;
-    if(Math.random() < 0.3) pattern.hiHat[7] = 1;
-    if(Math.random() < 0.3) pattern.hiHat[11] = 1;
-    if(Math.random() < 0.3) pattern.hiHat[15] = 1;
-
-
-    // Crash: Very rarely used.
-    if (Math.random() < 0.05) pattern.crash[0] = 1;
-
-    // Toms: Not typical for core Bossa Nova rhythm.
-    return pattern;
+function generateSingleBarBossaNovaPattern(barPattern) {
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.7) barPattern.kick[7] = 1;
+    if (Math.random() < 0.4) barPattern.kick[8] = 1;
+    if (Math.random() < 0.7) barPattern.kick[15] = 1;
+    barPattern.snare[2] = 1; barPattern.snare[5] = 1; barPattern.snare[8] = 1; barPattern.snare[11] = 1; barPattern.snare[14] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i += 2) if (Math.random() < 0.9) barPattern.hiHat[i] = 1;
+    if(Math.random() < 0.3) barPattern.hiHat[3] = 1; if(Math.random() < 0.3) barPattern.hiHat[7] = 1;
+    if(Math.random() < 0.3) barPattern.hiHat[11] = 1; if(Math.random() < 0.3) barPattern.hiHat[15] = 1;
+    if (Math.random() < 0.02) barPattern.crash[0] = 1;
+    return barPattern;
 }
 
-// Experimental (No Rules): Creative chaos.
-function generateExperimentalPattern(pattern) {
+// Experimental (No Rules): Creative chaos - now for the full 4 bars.
+function generateFullExperimentalPattern(pattern) { // Operates on the full 64-step pattern
     INSTRUMENTS.forEach(inst => {
-        for (let i = 0; i < STEPS_PER_BAR; i++) {
-            // Higher probability for notes, more syncopation, polyrhythms.
-            // Each instrument has a different random threshold.
-            const threshold = 0.1 + Math.random() * 0.4; // Varies from 0.1 to 0.5
+        for (let i = 0; i < TOTAL_STEPS; i++) {
+            const threshold = 0.1 + Math.random() * 0.4;
             if (Math.random() < threshold) {
                 pattern[inst][i] = 1;
             }
         }
     });
-    // Ensure it's not *too* dense or *too* sparse by randomly adding/removing a few more
-    for(let k=0; k<5; k++){
+    for(let k=0; k<20; k++){ // More adjustments for longer pattern
         let inst = INSTRUMENTS[Math.floor(Math.random() * INSTRUMENTS.length)];
-        let step = Math.floor(Math.random() * STEPS_PER_BAR);
-        pattern[inst][step] = Math.random() < 0.6 ? 1:0; // 60% chance to set, 40% to clear
+        let step = Math.floor(Math.random() * TOTAL_STEPS);
+        pattern[inst][step] = Math.random() < 0.6 ? 1:0;
     }
+    // Add a more chaotic fill for experimental
+    const fillStartStep = STEPS_PER_BAR * (NUM_BARS - 1);
+    for (let i = 0; i < STEPS_PER_BAR; i++) {
+        INSTRUMENTS.forEach(instrument => {
+            if (Math.random() < 0.35) { // Higher chance for any instrument in experimental fill
+                pattern[instrument][fillStartStep + i] = 1;
+            }
+        });
+    }
+    if (Math.random() < 0.5) pattern.crash[fillStartStep] = 1; // Crash at fill start
     return pattern;
 }
 
-
 // --- Main Generator Function ---
 export function generatePattern(genre, fusionGenres = []) {
-    let pattern = createEmptyPattern();
+    let fullPattern = createEmptyPattern(); // This is now 64 steps
 
-    // Base pattern generation based on genre
+    // Determine the single-bar generation function
+    let singleBarGenFunc;
     let basePatternSource = genre;
     if (genre === "genre-fusion" && fusionGenres.length === 2) {
-        basePatternSource = fusionGenres[0]; // Kick/Snare from first fusion genre
+        basePatternSource = fusionGenres[0];
     }
 
     switch (basePatternSource) {
-        case 'house':
-            generateHousePattern(pattern);
-            break;
-        case 'techno':
-            generateTechnoPattern(pattern);
-            break;
-        case 'hiphop':
-            generateHipHopPattern(pattern);
-            break;
-        case 'trap':
-            generateTrapPattern(pattern);
-            break;
-        case 'rock':
-            generateRockPattern(pattern);
-            break;
-        case 'funk':
-            generateFunkPattern(pattern);
-            break;
-        case 'reggaeton':
-            generateReggaetonPattern(pattern);
-            break;
-        case 'jazz':
-            generateJazzPattern(pattern);
-            break;
-        case 'bossa-nova':
-            generateBossaNovaPattern(pattern);
-            break;
+        case 'house': singleBarGenFunc = generateSingleBarHousePattern; break;
+        case 'techno': singleBarGenFunc = generateSingleBarTechnoPattern; break;
+        case 'hiphop': singleBarGenFunc = generateSingleBarHipHopPattern; break;
+        case 'trap': singleBarGenFunc = generateSingleBarTrapPattern; break;
+        case 'rock': singleBarGenFunc = generateSingleBarRockPattern; break;
+        case 'funk': singleBarGenFunc = generateSingleBarFunkPattern; break;
+        case 'reggaeton': singleBarGenFunc = generateSingleBarReggaetonPattern; break;
+        case 'jazz': singleBarGenFunc = generateSingleBarJazzPattern; break;
+        case 'bossa-nova': singleBarGenFunc = generateSingleBarBossaNovaPattern; break;
         case 'experimental':
-            generateExperimentalPattern(pattern);
-            break;
-        // Default to house if genre is unknown (should not happen with dropdown)
+            // Experimental is handled differently as it's not usually a repeated 1-bar pattern.
+            generateFullExperimentalPattern(fullPattern);
+            // Final check for experimental after full generation
+            let totalHitsExp = 0;
+            INSTRUMENTS.forEach(inst => { totalHitsExp += fullPattern[inst].reduce((sum, hit) => sum + hit, 0); });
+            if (totalHitsExp < 8) { // Increased minimum for 4 bars
+                console.log("Experimental pattern too sparse, regenerating...");
+                fullPattern = createEmptyPattern();
+                generateFullExperimentalPattern(fullPattern);
+            }
+            return fullPattern; // Return early for experimental
         default:
             console.warn(`Unknown base genre: ${basePatternSource}, defaulting to House.`);
-            generateHousePattern(pattern);
+            singleBarGenFunc = generateSingleBarHousePattern;
     }
 
-    // If Genre Fusion, apply hi-hat, cymbal, tom rules from the second genre
+    // Generate and tile the first NUM_BARS - 1 bars
+    for (let bar = 0; bar < NUM_BARS -1; bar++) {
+        const barOffset = bar * STEPS_PER_BAR;
+        let singleBarPattern = createEmptyPattern(STEPS_PER_BAR); // Temp 16-step pattern
+        singleBarGenFunc(singleBarPattern); // Populate the 16-step pattern
+
+        INSTRUMENTS.forEach(inst => {
+            for (let step = 0; step < STEPS_PER_BAR; step++) {
+                if (singleBarPattern[inst][step] === 1) {
+                    fullPattern[inst][barOffset + step] = 1;
+                }
+            }
+        });
+    }
+
+    // Add a genre-appropriate fill in the last bar
+    // For simplicity, using a generic fill function now, can be specialized later
+    // The `0` for barOffset in addGenericFill is because it calculates its own offset based on NUM_BARS-1
+    let fillDensity = 0.5;
+    let includeSnareInFill = true;
+    let includeTomsInFill = true;
+
+    if (basePatternSource === 'rock' || basePatternSource === 'funk') fillDensity = 0.7;
+    if (basePatternSource === 'techno' || basePatternSource === 'trap') fillDensity = 0.6;
+    if (basePatternSource === 'jazz' || basePatternSource === 'bossa-nova') {
+        fillDensity = 0.3;
+        includeTomsInFill = Math.random() < 0.5; // Toms less common in their fills
+    }
+    if (basePatternSource === 'hiphop') fillDensity = 0.55;
+
+
+    addGenericFill(fullPattern, basePatternSource, 0, fillDensity, includeSnareInFill, includeTomsInFill);
+
+
+    // If Genre Fusion, apply hi-hat, cymbal, tom rules from the second genre for the main loop part
     if (genre === "genre-fusion" && fusionGenres.length === 2) {
         const secondaryGenre = fusionGenres[1];
-        // Create a temporary pattern for secondary elements
-        let secondaryPattern = createEmptyPattern();
+        let secondarySingleBarGenFunc;
         switch (secondaryGenre) {
-            case 'house':
-                generateHousePattern(secondaryPattern);
-                break;
-            case 'techno':
-                generateTechnoPattern(secondaryPattern);
-                break;
-            case 'hiphop':
-                generateHipHopPattern(secondaryPattern);
-                break;
-            case 'trap':
-                generateTrapPattern(secondaryPattern);
-                break;
-            case 'rock':
-                generateRockPattern(secondaryPattern);
-                break;
-            case 'funk':
-                generateFunkPattern(secondaryPattern);
-                break;
-            case 'reggaeton':
-                generateReggaetonPattern(secondaryPattern);
-                break;
-            case 'jazz':
-                generateJazzPattern(secondaryPattern); // hihats will be swing-like
-                break;
-            case 'bossa-nova':
-                generateBossaNovaPattern(secondaryPattern);
-                break;
-            case 'experimental': // Allow experimental secondary elements
-                 generateExperimentalPattern(secondaryPattern);
-                 break;
+            case 'house': secondarySingleBarGenFunc = generateSingleBarHousePattern; break;
+            case 'techno': secondarySingleBarGenFunc = generateSingleBarTechnoPattern; break;
+            case 'hiphop': secondarySingleBarGenFunc = generateSingleBarHipHopPattern; break;
+            case 'trap': secondarySingleBarGenFunc = generateSingleBarTrapPattern; break;
+            case 'rock': secondarySingleBarGenFunc = generateSingleBarRockPattern; break;
+            case 'funk': secondarySingleBarGenFunc = generateSingleBarFunkPattern; break;
+            case 'reggaeton': secondarySingleBarGenFunc = generateSingleBarReggaetonPattern; break;
+            case 'jazz': secondarySingleBarGenFunc = generateSingleBarJazzPattern; break;
+            case 'bossa-nova': secondarySingleBarGenFunc = generateSingleBarBossaNovaPattern; break;
+            // Experimental secondary elements are tricky for a tiled pattern, could make just the fill experimental
+            // Or, for now, let's use a standard one if experimental is secondary.
             default:
                 console.warn(`Unknown secondary fusion genre: ${secondaryGenre}, using House for secondary elements.`);
-                generateHousePattern(secondaryPattern);
+                secondarySingleBarGenFunc = generateSingleBarHousePattern;
         }
-        // Copy only the hi-hat, crash, and tom from the secondary pattern
-        pattern.hiHat = secondaryPattern.hiHat;
-        pattern.crash = secondaryPattern.crash;
-        pattern.tom = secondaryPattern.tom;
-    } else if (genre === "experimental") {
-        // If the main genre is experimental, it already handled all instruments.
-        // No further action needed here.
+
+        if (secondaryGenre === 'experimental') {
+            // If secondary is experimental, make the fill experimental and keep primary hi-hats etc. for loop.
+            // Or, make hi-hats, toms, crash experimental for the loop section too.
+            // For now, let's make the fill experimental.
+            const fillStartStep = STEPS_PER_BAR * (NUM_BARS - 1);
+            INSTRUMENTS.forEach(inst => { // Clear previous fill for these instruments
+                if (inst === 'hiHat' || inst === 'crash' || inst === 'tom') {
+                    for(let i=0; i<STEPS_PER_BAR; i++) fullPattern[inst][fillStartStep + i] = 0;
+                }
+            });
+            let tempExpFillPattern = createEmptyPattern(STEPS_PER_BAR);
+            // A mini-experimental pattern for the fill
+            INSTRUMENTS.forEach(inst => {
+                if (inst === 'hiHat' || inst === 'crash' || inst === 'tom') {
+                    for (let i = 0; i < STEPS_PER_BAR; i++) {
+                        if (Math.random() < 0.4) tempExpFillPattern[inst][i] = 1;
+                    }
+                    for (let step = 0; step < STEPS_PER_BAR; step++) {
+                         if (tempExpFillPattern[inst][step] === 1) fullPattern[inst][fillStartStep + step] = 1;
+                    }
+                }
+            });
+             if (Math.random() < 0.7) fullPattern.crash[fillStartStep] = 1;
+
+
+        } else if (secondarySingleBarGenFunc) {
+            // Apply secondary genre's hi-hat, crash, tom for the first 3 bars
+            for (let bar = 0; bar < NUM_BARS - 1; bar++) {
+                const barOffset = bar * STEPS_PER_BAR;
+                let secondaryBarPattern = createEmptyPattern(STEPS_PER_BAR);
+                secondarySingleBarGenFunc(secondaryBarPattern);
+
+                ['hiHat', 'crash', 'tom'].forEach(inst => {
+                    // Clear existing secondary parts for this bar first
+                    for(let step = 0; step < STEPS_PER_BAR; step++) {
+                        fullPattern[inst][barOffset + step] = 0;
+                    }
+                    // Add new secondary parts
+                    for (let step = 0; step < STEPS_PER_BAR; step++) {
+                        if (secondaryBarPattern[inst][step] === 1) {
+                            fullPattern[inst][barOffset + step] = 1;
+                        }
+                    }
+                });
+            }
+            // The fill part (last bar) for hiHat, crash, tom will still be from the primary genre's fill logic.
+            // If specific fill style for secondary is needed, it would require more complex merging here.
+        }
+    }
+
+    // Ensure crash on the very first beat of the 4-bar loop for most genres
+    if (genre !== 'jazz' && genre !== 'bossa-nova' && genre !== 'experimental' && Math.random() < 0.4) {
+        fullPattern.crash[0] = 1;
     }
 
 
-    // Final check: ensure Experimental isn't *completely* silent if it's the primary genre
-    if (genre === "experimental") {
-        let totalHits = 0;
-        INSTRUMENTS.forEach(inst => {
-            totalHits += pattern[inst].reduce((sum, hit) => sum + hit, 0);
-        });
-        if (totalHits < 2) { // If extremely sparse, regenerate for more chaos
-            console.log("Experimental pattern too sparse, regenerating for more chaos...");
-            pattern = createEmptyPattern(); // Reset
-            generateExperimentalPattern(pattern); // Regenerate experimental part
-        }
-    }
-
-
-    return pattern;
+    return fullPattern;
 }
 
 // For "Genre Fusion", app.js will need to pick two random genres (excluding "Genre Fusion" itself and "Experimental")
@@ -533,8 +355,8 @@ export function generatePattern(genre, fusionGenres = []) {
 // Example: generatePattern("genre-fusion", ["hiphop", "techno"])
 // This would use hiphop for kick/snare, and techno for hihat/crash/tom.
 // If "Experimental" is one of the chosen fusion genres, its rules will apply to its designated part.
-// For example, ["rock", "experimental"] would be rock kick/snare, experimental hihats/toms/crash.
-// ["experimental", "house"] would be experimental kick/snare, house hihats/toms/crash.
+// For example, ["rock", "experimental"] would be rock kick/snare, experimental hihats/toms/crash for the loop, and an experimental fill.
+// ["experimental", "house"] would be experimental kick/snare for the loop, house hihats/toms/crash for the loop, and an experimental fill.
 
 export const GENRE_LIST = [
     "house", "techno", "hiphop", "trap", "rock", "funk", "reggaeton", "jazz", "bossa-nova"
@@ -546,8 +368,8 @@ export const ALL_GENRES_INCLUDING_SPECIAL = [
 
 // Simple test (run in browser console if testing this file standalone for basic output)
 // setTimeout(() => {
-//     console.log("House Pattern:", generatePattern("house"));
-//     console.log("Experimental Pattern:", generatePattern("experimental"));
-//     console.log("Genre Fusion (HipHop Kick/Snare, Techno HH/Crash/Tom):", generatePattern("genre-fusion", ["hiphop", "techno"]));
-//     console.log("Genre Fusion (Rock Kick/Snare, Experimental HH/Crash/Tom):", generatePattern("genre-fusion", ["rock", "experimental"]));
+//     console.log("House Pattern (4 bars):", generatePattern("house"));
+//     console.log("Experimental Pattern (4 bars):", generatePattern("experimental"));
+//     console.log("Genre Fusion (HipHop K/S, Techno HH/C/T - 4 bars):", generatePattern("genre-fusion", ["hiphop", "techno"]));
+//     console.log("Genre Fusion (Rock K/S, Experimental Secondary - 4 bars):", generatePattern("genre-fusion", ["rock", "experimental"]));
 // }, 100);

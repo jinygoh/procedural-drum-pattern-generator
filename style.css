@@ -66,8 +66,10 @@ body {
 
 #midi-grid {
     display: grid;
-    grid-template-columns: 100px repeat(16, 1fr); /* Instrument labels + 16 steps */
+    /* Instrument labels + 64 steps. Minmax helps prevent overly large cells on wide screens */
+    grid-template-columns: 100px repeat(64, minmax(20px, 1fr));
     gap: 2px; /* Minimal gap between cells */
+    min-width: calc(100px + 64 * (20px + 2px)); /* Ensure container can show all steps, or scroll */
 }
 
 .instrument-label {
@@ -134,12 +136,29 @@ body {
         margin-bottom: 2px;
     }
     #midi-grid {
-        grid-template-columns: 80px repeat(16, 1fr); /* Smaller labels */
+        /* Adjust for 64 steps on smaller screens, ensuring horizontal scroll will work well */
+        grid-template-columns: 60px repeat(64, minmax(18px, 1fr)); /* Smaller labels and steps */
+        min-width: calc(60px + 64 * (18px + 2px));
     }
     #playhead {
-        left: 80px; /* Adjust for smaller labels */
+        left: 60px; /* Adjust for smaller labels */
     }
     .instrument-label {
         font-size: 0.8em;
+        padding: 8px; /* Slightly reduce padding */
+    }
+}
+
+@media (max-width: 480px) {
+    #midi-grid {
+        grid-template-columns: 50px repeat(64, minmax(15px, 1fr)); /* Even smaller labels and steps for very small screens */
+        min-width: calc(50px + 64 * (15px + 2px));
+    }
+    #playhead {
+        left: 50px;
+    }
+    .instrument-label {
+        font-size: 0.7em;
+        padding: 6px;
     }
 }
