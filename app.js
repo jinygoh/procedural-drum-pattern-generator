@@ -513,8 +513,10 @@ async function exportWAV() {
 
             console.log("Offline kick synth object:", offlineSynths.kick);
             console.log("Offline kick volume object:", offlineSynths.kick.volume);
-            console.log("Offline snare.membrane synth object:", offlineSynths.snare.membrane); // Diagnostic
-            console.log("Offline snare.membrane volume object:", offlineSynths.snare.membrane ? offlineSynths.snare.membrane.volume : 'undefined'); // Diagnostic
+            console.log("Offline snare.membrane synth object:", offlineSynths.snare.membrane);
+            console.log("Offline snare.membrane volume object:", offlineSynths.snare.membrane ? offlineSynths.snare.membrane.volume : 'undefined');
+            console.log("Offline snare.noise synth object:", offlineSynths.snare.noise); // Diagnostic
+            console.log("Offline snare.noise volume object:", offlineSynths.snare.noise ? offlineSynths.snare.noise.volume : 'undefined'); // Diagnostic
 
             // Apply volume adjustments to offline synths
             offlineSynths.kick.volume.value = -2;
