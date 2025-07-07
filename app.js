@@ -65,6 +65,7 @@ const generateButton = document.getElementById('generate-all');
 const genreSelect = document.getElementById('genre-select');
 const bpmInput = document.getElementById('bpm-input');
 const playStopButton = document.getElementById('play-stop');
+const randomizeGenreButton = document.getElementById('randomize-genre'); // New button reference
 const exportMidiButton = document.getElementById('export-midi');
 const exportWavButton = document.getElementById('export-wav');
 const midiGridDiv = document.getElementById('midi-grid');
@@ -209,25 +210,32 @@ function setupPlayhead() {
         Tone.Transport.clear(playheadEventId);
     }
 
-    playheadEventId = Tone.Transport.scheduleRepeat(time => {
+    playheadEventId = Tone.Transport.scheduleRepeat(audioTime => { // Renamed 'time' to 'audioTime' for clarity
         Tone.Draw.schedule(() => {
-            const currentTick = Tone.Transport.ticks;
-            const totalTicksInLoop = Tone.Transport.PPQ * 4 * NUM_BARS;
-            const progress = (currentTick % totalTicksInLoop) / totalTicksInLoop;
-            const playheadX = labelWidth + (progress * (stepWidth * TOTAL_STEPS));
-            playheadDiv.style.transform = `translateX(${playheadX}px)`;
+            // const currentTick = Tone.Transport.ticks;
+            // const totalTicksInLoop = Tone.Transport.PPQ * 4 * NUM_BARS;
+            // const loopProgressOld = (currentTick % totalTicksInLoop) / totalTicksInLoop; // Progress within the current loop iteration
 
-            // Highlight playing cells
-            // Current step within the entire 64-step sequence
-            const currentGlobalStep = Math.floor(progress * TOTAL_STEPS);
+            // Use Tone.Transport.progress for potentially more direct synchronization
+            const transportProgress = Tone.Transport.progress; // This is normalized 0-1 over the loop duration
+
+            const calculatedPlayheadX = labelWidth + (transportProgress * (stepWidth * TOTAL_STEPS));
+            playheadDiv.style.transform = `translateX(${calculatedPlayheadX}px)`;
+
+            const currentGlobalStep = Math.floor(transportProgress * TOTAL_STEPS);
+
+            // Logging
+            // console.log(`AudioTime: ${audioTime.toFixed(4)}, TransportProgress: ${transportProgress.toFixed(4)}, CalcX: ${calculatedPlayheadX.toFixed(2)}, Step: ${currentGlobalStep}, Actual StepWidth: ${midiGridDiv.querySelector('.step')?.offsetWidth}`);
+
+
             document.querySelectorAll('.step.playing').forEach(cell => cell.classList.remove('playing'));
             document.querySelectorAll(`.step[data-step='${currentGlobalStep}']`).forEach(cell => {
-                if (cell.classList.contains('active')) { // Only highlight if it's an active note
+                if (cell.classList.contains('active')) {
                     cell.classList.add('playing');
                 }
             });
 
-        }, time);
+        }, audioTime); // Use the audioTime passed by scheduleRepeat
     }, '16n'); // Update every 16th note
 }
 
@@ -577,13 +585,37 @@ function init() {
     Tone.Transport.loopEnd = `${NUM_BARS}m`; // Set loop end for NUM_BARS measures
     Tone.Transport.bpm.value = parseInt(bpmInput.value, 10);
 
-    generateButton.addEventListener('click', () => handleGenerateWrapper(true)); // Auto-play on "Generate All"
+    generateButton.addEventListener('click', () => handleGenerateWrapper(true)); // isGenerateAllContext = true (random genre, auto-play)
     playStopButton.addEventListener('click', handlePlayStop);
     bpmInput.addEventListener('change', handleBpmChange);
     bpmInput.addEventListener('input', handleBpmChange); // For more responsive BPM update
     genreSelect.addEventListener('change', handleGenreChange);
     exportMidiButton.addEventListener('click', exportMIDI);
     exportWavButton.addEventListener('click', exportWAV);
+
+    randomizeGenreButton.addEventListener('click', async () => {
+        await Tone.start(); // Ensure audio context is running
+        const currentGenre = genreSelect.value;
+
+        // Update BPM for the current genre (will pick a random one from its range)
+        updateBpmForGenre(currentGenre);
+
+        // Generate pattern for the current genre (isGenerateAllContext = false, so it uses selected genre)
+        await handleGenerate(false);
+
+        // Auto-play logic (similar to what's in handleGenerateWrapper)
+        if (currentPattern) {
+            if (isPlaying) {
+                Tone.Transport.stop();
+            }
+            Tone.Transport.position = 0; // Restart from the beginning
+            Tone.Transport.start();
+            isPlaying = true;
+            playStopButton.textContent = 'Stop';
+            playheadDiv.style.opacity = '0.5';
+            setupPlayhead();
+        }
+    });
 
     // Generate an initial pattern on load
     updateBpmForGenre(genreSelect.value); // Set initial BPM based on default selected genre
