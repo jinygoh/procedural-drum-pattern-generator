@@ -1,4 +1,4 @@
-import { generatePattern, GENRE_LIST, INSTRUMENTS as INSTRUMENT_NAMES } from './generator.js';
+import { generatePattern, GENRE_LIST, INSTRUMENTS as INSTRUMENT_NAMES, GENRE_BPM_MAP } from './generator.js';
 
 // --- Tone.js Synthesizer Setup ---
 const synths = {
@@ -43,8 +43,21 @@ const synths = {
 };
 // Connect snare components (noise synth already connected)
 // synths.snare.noise.connect(synths.snare.membrane); // This is incorrect, synths don't have inputs. They are triggered in parallel.
-synths.snare.membrane.volume.value = -12; // Membrane is more subtle
-synths.snare.noise.volume.value = -6;
+// Initial volume settings (can be adjusted further based on testing)
+// Aiming for snare to be more prominent. Kick around -3dB to -0dB as a reference.
+// Snare components will be boosted. Other elements might be slightly reduced to create headroom.
+
+synths.kick.volume.value = -2; // Kick slightly less than max to leave room
+
+synths.snare.membrane.volume.value = -5;    // Significantly boosted membrane for more body
+synths.snare.noise.volume.value = -2;      // Significantly boosted noise for more snap, matching kick level
+
+synths.hiHat.volume.value = -20;      // Hi-hats significantly quieter
+// synths.hiHat.filter.Q.value = 1; // Default Q is 1, can increase for more resonance if needed
+
+synths.crash.volume.value = -12;       // Crashes also slightly more controlled
+
+synths.tom.volume.value = -9;          // Toms boosted slightly relative to previous
 
 
 // --- DOM Element References ---
@@ -52,6 +65,7 @@ const generateButton = document.getElementById('generate-all');
 const genreSelect = document.getElementById('genre-select');
 const bpmInput = document.getElementById('bpm-input');
 const playStopButton = document.getElementById('play-stop');
+const randomizeGenreButton = document.getElementById('randomize-genre'); // New button reference
 const exportMidiButton = document.getElementById('export-midi');
 const exportWavButton = document.getElementById('export-wav');
 const midiGridDiv = document.getElementById('midi-grid');
@@ -60,23 +74,49 @@ const playheadDiv = document.getElementById('playhead');
 // --- Application State ---
 let currentPattern = null;
 let isPlaying = false;
-const STEPS = 16;
+const STEPS_PER_BAR = 16;
+const NUM_BARS = 4;
+const TOTAL_STEPS = STEPS_PER_BAR * NUM_BARS; // 64 steps
 const instrumentParts = {}; // To hold Tone.Part for each instrument
 
 // --- MIDI Grid Creation ---
 function createMidiGrid() {
     midiGridDiv.innerHTML = ''; // Clear existing grid
+
+    // Create Bar Indicator Row
+    const barIndicatorRow = document.createElement('div');
+    barIndicatorRow.classList.add('bar-indicator-row');
+    const emptyLabelCell = document.createElement('div'); // For alignment with instrument labels
+    emptyLabelCell.classList.add('instrument-label', 'bar-header-empty');
+    barIndicatorRow.appendChild(emptyLabelCell);
+
+    for (let bar = 0; bar < NUM_BARS; bar++) {
+        const barNumberDiv = document.createElement('div');
+        barNumberDiv.classList.add('bar-number');
+        barNumberDiv.textContent = `Bar ${bar + 1}`;
+        barNumberDiv.style.gridColumn = `span ${STEPS_PER_BAR}`;
+        barIndicatorRow.appendChild(barNumberDiv);
+    }
+    midiGridDiv.appendChild(barIndicatorRow);
+
+    // Create Instrument Rows and Step Cells
     INSTRUMENT_NAMES.forEach(instrumentName => {
         const labelDiv = document.createElement('div');
         labelDiv.classList.add('instrument-label');
         labelDiv.textContent = instrumentName.charAt(0).toUpperCase() + instrumentName.slice(1);
         midiGridDiv.appendChild(labelDiv);
 
-        for (let step = 0; step < STEPS; step++) {
+        for (let step = 0; step < TOTAL_STEPS; step++) { // Use TOTAL_STEPS
             const stepDiv = document.createElement('div');
             stepDiv.classList.add('step');
             stepDiv.dataset.instrument = instrumentName;
             stepDiv.dataset.step = step;
+
+            // Add class for bar separator lines (on the right edge of steps 15, 31, 47)
+            if ((step + 1) % STEPS_PER_BAR === 0 && step < TOTAL_STEPS - 1) {
+                stepDiv.classList.add('bar-separator-step');
+            }
+
             // Allow toggling steps manually (optional, but good for interaction)
             stepDiv.addEventListener('click', () => {
                 if (currentPattern) {
@@ -92,8 +132,12 @@ function createMidiGrid() {
     const firstStepCell = midiGridDiv.querySelector('.step');
     if (firstStepCell) {
         playheadDiv.style.width = `${firstStepCell.offsetWidth}px`;
-        playheadDiv.style.opacity = '0.5'; // Make it a bit transparent
+        // Opacity is now handled by play/stop logic directly for initial show/hide
     }
+    // Initial playhead position needs to be set considering the label width
+    const labelWidth = midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+    playheadDiv.style.transform = `translateX(${labelWidth}px)`;
+    playheadDiv.style.opacity = '0'; // Start hidden
 }
 
 // --- Update Visual Grid from Pattern Data ---
@@ -122,7 +166,11 @@ function updateToneParts() {
         const partData = [];
         currentPattern[instrumentName].forEach((isActive, step) => {
             if (isActive) {
-                partData.push({ time: `0:0:${step}` }); // Time as Bars:Beats:Sixteenths
+                // Calculate time correctly for 64 steps
+                const bar = Math.floor(step / STEPS_PER_BAR);
+                const beatInBar = Math.floor((step % STEPS_PER_BAR) / 4);
+                const sixteenthInBeat = step % 4;
+                partData.push({ time: `${bar}:${beatInBar}:${sixteenthInBeat}` });
             }
         });
 
@@ -145,7 +193,7 @@ function updateToneParts() {
             }
         }, partData).start(0);
         instrumentParts[instrumentName].loop = true;
-        instrumentParts[instrumentName].loopEnd = '1m'; // Loop for one measure
+        instrumentParts[instrumentName].loopEnd = `${NUM_BARS}m`; // Loop for NUM_BARS measures (e.g., '4m')
     });
 }
 
@@ -153,31 +201,41 @@ function updateToneParts() {
 // --- Playhead Visualization ---
 let playheadEventId = null;
 function setupPlayhead() {
-    const stepWidth = midiGridDiv.querySelector('.step')?.offsetWidth || 30; // Fallback width
-    const labelWidth = midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 100;
+    const stepWidth = midiGridDiv.querySelector('.step')?.offsetWidth || 15; // Updated fallback
+    const labelWidth = midiGridDiv.querySelector('.instrument-label.bar-header-empty')?.offsetWidth || // Use the empty header cell for consistent width
+                       midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+
 
     if (playheadEventId !== null) {
         Tone.Transport.clear(playheadEventId);
     }
 
-    playheadEventId = Tone.Transport.scheduleRepeat(time => {
+    playheadEventId = Tone.Transport.scheduleRepeat(audioTime => { // Renamed 'time' to 'audioTime' for clarity
         Tone.Draw.schedule(() => {
-            const currentTick = Tone.Transport.ticks;
-            const ticksPerBar = Tone.Transport.PPQ * 4; // PPQ = pulses (ticks) per quarter note
-            const progress = (currentTick % ticksPerBar) / ticksPerBar;
-            const playheadX = labelWidth + (progress * (stepWidth * STEPS));
-            playheadDiv.style.transform = `translateX(${playheadX}px)`;
+            // const currentTick = Tone.Transport.ticks;
+            // const totalTicksInLoop = Tone.Transport.PPQ * 4 * NUM_BARS;
+            // const loopProgressOld = (currentTick % totalTicksInLoop) / totalTicksInLoop; // Progress within the current loop iteration
 
-            // Highlight playing cells
-            const currentStep = Math.floor(progress * STEPS);
+            // Use Tone.Transport.progress for potentially more direct synchronization
+            const transportProgress = Tone.Transport.progress; // This is normalized 0-1 over the loop duration
+
+            const calculatedPlayheadX = labelWidth + (transportProgress * (stepWidth * TOTAL_STEPS));
+            playheadDiv.style.transform = `translateX(${calculatedPlayheadX}px)`;
+
+            const currentGlobalStep = Math.floor(transportProgress * TOTAL_STEPS);
+
+            // Logging
+            // console.log(`AudioTime: ${audioTime.toFixed(4)}, TransportProgress: ${transportProgress.toFixed(4)}, CalcX: ${calculatedPlayheadX.toFixed(2)}, Step: ${currentGlobalStep}, Actual StepWidth: ${midiGridDiv.querySelector('.step')?.offsetWidth}`);
+
+
             document.querySelectorAll('.step.playing').forEach(cell => cell.classList.remove('playing'));
-            document.querySelectorAll(`.step[data-step='${currentStep}']`).forEach(cell => {
-                if (cell.classList.contains('active')) { // Only highlight if it's an active note
+            document.querySelectorAll(`.step[data-step='${currentGlobalStep}']`).forEach(cell => {
+                if (cell.classList.contains('active')) {
                     cell.classList.add('playing');
                 }
             });
 
-        }, time);
+        }, audioTime); // Use the audioTime passed by scheduleRepeat
     }, '16n'); // Update every 16th note
 }
 
@@ -186,29 +244,64 @@ function setupPlayhead() {
 async function handleGenerate() {
     await Tone.start(); // Ensure AudioContext is running
 
-    const selectedGenre = genreSelect.value;
+    let genreToGenerate = genreSelect.value;
     let fusionPair = [];
+    // This flag indicates if handleGenerate was called by the "Generate All" button,
+    // which is now passed via handleGenerateWrapper.
+    // We'll use this to decide if we need to pick a random genre.
+    // The autoPlay parameter in handleGenerateWrapper serves a dual purpose now:
+    // 1. Trigger auto-play
+    // 2. Indicate that "Generate All" was the source, thus potentially randomizing genre.
 
-    if (selectedGenre === "genre-fusion") {
-        // Randomly select two different base genres
+    // The first argument to handleGenerate is now `isGenerateAllContext`
+    const isGenerateAllClick = arguments.length > 0 && arguments[0] === true;
+
+    if (isGenerateAllClick) {
+        // "Generate All" button was clicked, so pick a random base genre.
+        const randomBaseGenreIndex = Math.floor(Math.random() * GENRE_LIST.length);
+        genreToGenerate = GENRE_LIST[randomBaseGenreIndex];
+        genreSelect.value = genreToGenerate; // Update dropdown to reflect the randomly chosen genre
+    }
+    // If not from "Generate All", genreToGenerate remains genreSelect.value (i.e., what user manually selected)
+
+    if (genreToGenerate === "genre-fusion") {
+        // This block will now only be entered if the user *manually* selected "Genre Fusion"
+        // from the dropdown and then either hit play (if no pattern) or it was triggered by genre change.
+        // "Generate All" now bypasses "genre-fusion" and "experimental" for direct generation.
         let genre1 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
         let genre2 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
-        while (genre2 === genre1) { // Ensure they are different
+        while (genre2 === genre1) {
             genre2 = GENRE_LIST[Math.floor(Math.random() * GENRE_LIST.length)];
         }
         fusionPair = [genre1, genre2];
-        console.log(`Genre Fusion: ${genre1} (Kick/Snare) + ${genre2} (Hats/Cymb/Toms)`);
+        console.log(`Fusion selected: ${genre1} (K/S) + ${genre2} (HH/C/T)`);
+        // The dropdown already shows "genre-fusion" because the user selected it.
+        // genreToGenerate is correctly "genre-fusion" for generatePattern()
     }
+    // If genreToGenerate is "experimental" (manually selected by user), it will also pass through.
 
-    currentPattern = generatePattern(selectedGenre, fusionPair);
+    currentPattern = generatePattern(genreToGenerate, fusionPair);
     updateVisualGrid();
     updateToneParts();
+
+    // Update BPM for the genre that was actually used for generation.
+    let genreForBpmUpdate = genreToGenerate;
+    if (genreToGenerate === "genre-fusion" && fusionPair.length > 0) {
+        genreForBpmUpdate = fusionPair[0]; // Use first genre of fusion pair for BPM
+    } else if (genreToGenerate === "genre-fusion") { // Fallback if fusion pair empty (shouldn't happen)
+        genreForBpmUpdate = "house";
+    }
+    // If genreToGenerate was a random one from "Generate All", it's already set correctly.
+    updateBpmForGenre(genreForBpmUpdate);
 }
+
+
+// The main logic is now inside handleGenerateWrapper's call to the modified handleGenerate.
 
 function handlePlayStop() {
     if (!currentPattern) { // Generate a pattern first if none exists
-        handleGenerate().then(() => {
-             if (currentPattern) togglePlayback(); // Then toggle
+        handleGenerateWrapper(false).then(() => { // isGenerateAllContext = false
+             if (currentPattern) togglePlayback();
         });
     } else {
         togglePlayback();
@@ -222,12 +315,29 @@ function togglePlayback() {
         playheadDiv.style.opacity = '0'; // Hide playhead when stopped
         document.querySelectorAll('.step.playing').forEach(cell => cell.classList.remove('playing'));
     } else {
-        Tone.Transport.start();
+        Tone.Transport.start(); // Restart from the beginning
         playStopButton.textContent = 'Stop';
         playheadDiv.style.opacity = '0.5'; // Show playhead
         setupPlayhead(); // Restart playhead scheduling
     }
     isPlaying = !isPlaying;
+}
+
+// Wrapper for handleGenerate to manage autoPlay flag and context
+async function handleGenerateWrapper(isGenerateAllContext = false) { // Renamed autoPlay to isGenerateAllContext
+    await handleGenerate(isGenerateAllContext); // Pass the context flag
+
+    if (isGenerateAllContext && currentPattern) { // Auto-play if "Generate All"
+        if (isPlaying) {
+            Tone.Transport.stop();
+        }
+        Tone.Transport.position = 0; // Restart from the beginning
+        Tone.Transport.start();
+        isPlaying = true;
+        playStopButton.textContent = 'Stop';
+        playheadDiv.style.opacity = '0.5';
+        setupPlayhead();
+    }
 }
 
 
@@ -242,8 +352,27 @@ function handleGenreChange() {
     } else {
         Tone.Transport.swing = 0; // No swing for others
     }
-    handleGenerate(); // Generate a new pattern for the selected genre
+    updateBpmForGenre(selectedGenre);
+    handleGenerateWrapper(false); // Do not auto-play on manual genre change
 }
+
+// --- BPM Update Function ---
+function updateBpmForGenre(genre) {
+    const genreSettings = GENRE_BPM_MAP[genre];
+    let newBpm = 120; // Default fallback
+
+    if (genreSettings) {
+        // Select a random BPM from the range if available, otherwise use default
+        if (genreSettings.range && genreSettings.range.length === 2) {
+            newBpm = Math.floor(Math.random() * (genreSettings.range[1] - genreSettings.range[0] + 1)) + genreSettings.range[0];
+        } else {
+            newBpm = genreSettings.default;
+        }
+    }
+    bpmInput.value = newBpm;
+    Tone.Transport.bpm.value = newBpm;
+}
+
 
 // --- Export Functions ---
 function exportMIDI() {
@@ -272,7 +401,20 @@ function exportMIDI() {
         const events = [];
         currentPattern[instrumentName].forEach((isActive, step) => {
             if (isActive) {
-                const startTimeTicks = (step / STEPS) * Tone.Transport.PPQ * 4; // Calculate ticks
+                // Calculate ticks based on TOTAL_STEPS for a 4-bar loop
+                // Each step is a 16th note. Tone.Transport.PPQ is ticks per quarter note.
+                // So, ticks per 16th note = Tone.Transport.PPQ / 4.
+                // startTimeTicks = step * (Tone.Transport.PPQ / 4)
+                // However, MidiWriter's startTick is often based on a PPQ defined for the track.
+                // If MidiWriter's default PPQ (often 128 or higher) is different from Tone's, direct scaling might be needed.
+                // For simplicity, let's assume MidiWriter uses a PPQ where '16' duration means a 16th note.
+                // The startTick needs to be scaled according to the number of 16th notes.
+                // Each bar has 16 sixteenths. Total sixteenths = TOTAL_STEPS.
+                // If Tone.Transport.PPQ is, for example, 192 (default for Tone.js), then a 16th note is 192/4 = 48 ticks.
+                // MidiWriter.NoteEvent startTick expects absolute ticks from the start of the track.
+                const ticksPerSixteenth = Tone.Transport.PPQ / 4;
+                const startTimeTicks = step * ticksPerSixteenth;
+
                  events.push(new MidiWriter.NoteEvent({
                     pitch: [midiNote],
                     duration: '16', // 16th note duration (MidiWriter format)
@@ -315,18 +457,54 @@ async function exportWAV() {
         const buffer = await Tone.Offline(async (offlineTransport) => {
             // Setup synths and parts within the offline context
             const offlineSynths = { // Recreate synths for offline context
-                kick: new Tone.MembraneSynth().toDestination(),
+                kick: new Tone.MembraneSynth({ // Apply same options as live synth
+                    pitchDecay: 0.03,
+                    octaves: 6,
+                    oscillator: { type: 'fmsine' },
+                    envelope: { attack: 0.001, decay: 0.3, sustain: 0.01, release: 0.2 }
+                }).toDestination(),
                 snare: {
-                    noise: new Tone.NoiseSynth({envelope: {decay:0.15}}).toDestination(),
-                    membrane: new Tone.MembraneSynth({envelope: {decay:0.1}}).toDestination()
+                    noise: new Tone.NoiseSynth({ // Keep existing offline-specific options
+                        noise: { type: 'pink' }, // Match live synth for type
+                        envelope: { attack: 0.001, decay: 0.15, sustain: 0, release: 0.1 } // Match live synth
+                    }).toDestination(),
+                    membrane: new Tone.MembraneSynth({ // Match live synth
+                        pitchDecay: 0.08,
+                        octaves: 5,
+                        oscillator: {type: "sine"},
+                        envelope: {attack: 0.002, decay: 0.1, sustain: 0, release: 0.05}
+                    }).toDestination()
                 },
-                hiHat: new Tone.NoiseSynth({envelope: {decay:0.05}, filter: new Tone.Filter(8000, "highpass")}).toDestination(),
-                crash: new Tone.MetalSynth({envelope: {decay:1.5}}).toDestination(),
-                tom: new Tone.MembraneSynth({envelope: {decay:0.25}}).toDestination()
+                hiHat: new Tone.NoiseSynth({ // Match live synth
+                    noise: { type: 'white' },
+                    envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.03 },
+                    filter: new Tone.Filter(8000, "highpass") // Filter needs to be newed up for offline synth
+                }).toDestination(),
+                crash: new Tone.MetalSynth({ // Match live synth
+                    frequency: 150,
+                    envelope: { attack: 0.002, decay: 1.5, release: 2 },
+                    harmonicity: 4.1,
+                    modulationIndex: 20,
+                    resonance: 3000,
+                    octaves: 1.2
+                }).toDestination(),
+                tom: new Tone.MembraneSynth({ // Match live synth
+                    pitchDecay: 0.08,
+                    octaves: 4,
+                    oscillator: { type: 'sine' },
+                    envelope: { attack: 0.005, decay: 0.25, sustain: 0.01, release: 0.1 }
+                }).toDestination()
             };
             // offlineSynths.snare.noise.connect(offlineSynths.snare.membrane); // This is incorrect
-            offlineSynths.snare.membrane.volume.value = -12;
-            offlineSynths.snare.noise.volume.value = -6;
+
+            // Apply volume adjustments to offline synths
+            // These should now work if synths are properly instantiated with all necessary sub-objects
+            offlineSynths.kick.volume.value = -2;
+            offlineSynths.snare.membrane.volume.value = -5;
+            offlineSynths.snare.noise.volume.value = -2;
+            offlineSynths.hiHat.volume.value = -20; // Matched to live synth
+            offlineSynths.crash.volume.value = -12; // Matched to live synth
+            offlineSynths.tom.volume.value = -9;
 
 
             INSTRUMENT_NAMES.forEach(instrumentName => {
@@ -354,7 +532,7 @@ async function exportWAV() {
             offlineTransport.bpm.value = Tone.Transport.bpm.value;
             offlineTransport.swing = Tone.Transport.swing; // Apply swing if active
             offlineTransport.start();
-        }, Tone.Time('1m').toSeconds()); // Render for the duration of one measure
+        }, Tone.Time(`${NUM_BARS}m`).toSeconds()); // Render for the duration of NUM_BARS measures
 
         // Convert AudioBuffer to WAV
         const wavBlob = audioBufferToWav(buffer);
@@ -435,10 +613,10 @@ function audioBufferToWav(buffer) {
 function init() {
     createMidiGrid();
     Tone.Transport.loop = true;
-    Tone.Transport.loopEnd = '1m';
+    Tone.Transport.loopEnd = `${NUM_BARS}m`; // Set loop end for NUM_BARS measures
     Tone.Transport.bpm.value = parseInt(bpmInput.value, 10);
 
-    generateButton.addEventListener('click', handleGenerate);
+    generateButton.addEventListener('click', () => handleGenerateWrapper(true)); // isGenerateAllContext = true (random genre, auto-play)
     playStopButton.addEventListener('click', handlePlayStop);
     bpmInput.addEventListener('change', handleBpmChange);
     bpmInput.addEventListener('input', handleBpmChange); // For more responsive BPM update
@@ -446,18 +624,56 @@ function init() {
     exportMidiButton.addEventListener('click', exportMIDI);
     exportWavButton.addEventListener('click', exportWAV);
 
+    randomizeGenreButton.addEventListener('click', async () => {
+        await Tone.start(); // Ensure audio context is running
+        const currentGenre = genreSelect.value;
+
+        // Update BPM for the current genre (will pick a random one from its range)
+        updateBpmForGenre(currentGenre);
+
+        // Generate pattern for the current genre (isGenerateAllContext = false, so it uses selected genre)
+        await handleGenerate(false);
+
+        // Auto-play logic (similar to what's in handleGenerateWrapper)
+        if (currentPattern) {
+            if (isPlaying) {
+                Tone.Transport.stop();
+            }
+            Tone.Transport.position = 0; // Restart from the beginning
+            Tone.Transport.start();
+            isPlaying = true;
+            playStopButton.textContent = 'Stop';
+            playheadDiv.style.opacity = '0.5';
+            setupPlayhead();
+        }
+    });
+
     // Generate an initial pattern on load
+    updateBpmForGenre(genreSelect.value); // Set initial BPM based on default selected genre
     handleGenreChange(); // This will call handleGenerate
 
-    // Adjust playhead on window resize
+    // Adjust playhead related calculations on window resize
     window.addEventListener('resize', () => {
+        // Recalculate and set the visual width of the playhead line/bar itself
         const firstStepCell = midiGridDiv.querySelector('.step');
         if (firstStepCell) {
             playheadDiv.style.width = `${firstStepCell.offsetWidth}px`;
         }
-        // If playing, re-setup playhead to correctly calculate positions with new widths
+
+        // If playing, the playhead's movement calculation needs to be updated
+        // with the new step and label widths.
+        // Clearing and re-scheduling setupPlayhead will ensure it uses fresh measurements.
         if (isPlaying) {
-            setupPlayhead();
+            if (playheadEventId !== null) {
+                Tone.Transport.clear(playheadEventId);
+                playheadEventId = null; // Important to nullify before recall
+            }
+            setupPlayhead(); // Re-initialize with new dimensions
+        } else {
+            // If stopped, still update the initial transform in case labels resized
+            const labelWidth = midiGridDiv.querySelector('.instrument-label.bar-header-empty')?.offsetWidth ||
+                               midiGridDiv.querySelector('.instrument-label')?.offsetWidth || 80;
+            playheadDiv.style.transform = `translateX(${labelWidth}px)`;
         }
     });
     console.log("Drum Machine Initialized. Tone.js version:", Tone.version);
