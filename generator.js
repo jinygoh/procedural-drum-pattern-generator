@@ -170,6 +170,81 @@ function generateSingleBarBossaNovaPattern(barPattern) {
     return barPattern;
 }
 
+function generateSingleBarDnbPattern(barPattern) {
+    // Fast breakbeat feel
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.6) barPattern.kick[3] = 1;
+    barPattern.kick[8] = 1;
+    if (Math.random() < 0.4) barPattern.kick[10] = 1;
+    if (Math.random() < 0.7) barPattern.kick[13] = 1;
+    barPattern.snare[4] = 1;
+    barPattern.snare[12] = 1;
+    if (Math.random() < 0.3) barPattern.snare[7] = 1;
+    if (Math.random() < 0.3) barPattern.snare[15] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i++) {
+        if (Math.random() < 0.8) barPattern.hiHat[i] = 1;
+    }
+    if (Math.random() < 0.1) barPattern.crash[0] = 1;
+    return barPattern;
+}
+
+function generateSingleBarDubstepPattern(barPattern) {
+    // Half-time feel, kick on 1, snare on 3
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.4) barPattern.kick[6] = 1;
+    barPattern.snare[8] = 1; // Snare on the 3rd beat
+    for (let i = 0; i < STEPS_PER_BAR; i+=2) {
+        if (Math.random() < 0.6) barPattern.hiHat[i] = 1;
+    }
+    if (Math.random() < 0.2) barPattern.hiHat[14] = 1;
+    if (Math.random() < 0.1) barPattern.crash[0] = 1;
+    return barPattern;
+}
+
+function generateSingleBarMetalPattern(barPattern) {
+    // Fast and aggressive, double bass
+    for (let i = 0; i < STEPS_PER_BAR; i+=2) {
+        if (Math.random() < 0.8) barPattern.kick[i] = 1;
+        if (i>0 && Math.random() < 0.4) barPattern.kick[i-1] = 1;
+    }
+    barPattern.snare[4] = 1;
+    barPattern.snare[12] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i++) {
+        if (Math.random() < 0.7) barPattern.hiHat[i] = 1;
+    }
+    if (Math.random() < 0.2) barPattern.crash[0] = 1;
+    return barPattern;
+}
+
+function generateSingleBarSalsaPattern(barPattern) {
+    // 3-2 Son Clave
+    barPattern.kick[0] = 1;
+    barPattern.kick[6] = 1;
+    barPattern.kick[10] = 1;
+    barPattern.snare[4] = 1; // Often a side-stick
+    barPattern.snare[12] = 1;
+    // Cascara pattern on hi-hat
+    barPattern.hiHat[0] = 1; barPattern.hiHat[2] = 1; barPattern.hiHat[4] = 1; barPattern.hiHat[6] = 1;
+    barPattern.hiHat[8] = 1; barPattern.hiHat[10] = 1; barPattern.hiHat[12] = 1; barPattern.hiHat[14] = 1;
+    if (Math.random() < 0.1) barPattern.crash[0] = 1;
+    return barPattern;
+}
+
+function generateSingleBarAfrobeatPattern(barPattern) {
+    barPattern.kick[0] = 1;
+    if (Math.random() < 0.5) barPattern.kick[3] = 1;
+    barPattern.kick[8] = 1;
+    if (Math.random() < 0.5) barPattern.kick[11] = 1;
+    barPattern.snare[4] = 1;
+    barPattern.snare[12] = 1;
+    for (let i = 0; i < STEPS_PER_BAR; i+=2) {
+        barPattern.hiHat[i] = 1;
+    }
+    if (Math.random() < 0.2) barPattern.tom[7] = 1;
+    if (Math.random() < 0.2) barPattern.tom[15] = 1;
+    return barPattern;
+}
+
 // Experimental (No Rules): Creative chaos - now for the full 4 bars.
 function generateFullExperimentalPattern(pattern) { // Operates on the full 64-step pattern
     INSTRUMENTS.forEach(inst => {
@@ -219,6 +294,11 @@ export function generatePattern(genre, fusionGenres = []) {
         case 'reggaeton': singleBarGenFunc = generateSingleBarReggaetonPattern; break;
         case 'jazz': singleBarGenFunc = generateSingleBarJazzPattern; break;
         case 'bossa-nova': singleBarGenFunc = generateSingleBarBossaNovaPattern; break;
+        case 'dnb': singleBarGenFunc = generateSingleBarDnbPattern; break;
+        case 'dubstep': singleBarGenFunc = generateSingleBarDubstepPattern; break;
+        case 'metal': singleBarGenFunc = generateSingleBarMetalPattern; break;
+        case 'salsa': singleBarGenFunc = generateSingleBarSalsaPattern; break;
+        case 'afrobeat': singleBarGenFunc = generateSingleBarAfrobeatPattern; break;
         case 'experimental':
             // Experimental is handled differently as it's not usually a repeated 1-bar pattern.
             generateFullExperimentalPattern(fullPattern);
@@ -359,7 +439,7 @@ export function generatePattern(genre, fusionGenres = []) {
 // ["experimental", "house"] would be experimental kick/snare for the loop, house hihats/toms/crash for the loop, and an experimental fill.
 
 export const GENRE_LIST = [
-    "house", "techno", "hiphop", "trap", "rock", "funk", "reggaeton", "jazz", "bossa-nova"
+    "house", "techno", "hiphop", "trap", "rock", "funk", "reggaeton", "jazz", "bossa-nova", "dnb", "dubstep", "metal", "salsa", "afrobeat"
 ]; // For fusion mode to pick from these standard ones. Experimental is not included here for fusion base.
 
 export const ALL_GENRES_INCLUDING_SPECIAL = [
@@ -376,6 +456,11 @@ export const GENRE_BPM_MAP = {
     "reggaeton": { default: 95, range: [85, 105] },
     "jazz": { default: 130, range: [100, 180] }, // Wide range for jazz
     "bossa-nova": { default: 115, range: [100, 130] }, // Often more relaxed
+    "dnb": { default: 170, range: [160, 180] },
+    "dubstep": { default: 140, range: [135, 145] },
+    "metal": { default: 150, range: [120, 180] },
+    "salsa": { default: 180, range: [160, 200] },
+    "afrobeat": { default: 110, range: [100, 120] },
     "experimental": { default: 120, range: [70, 200] }, // Wildly variable
     "genre-fusion": { default: 120, range: [90, 150] } // Generic fallback for fusion
 };
