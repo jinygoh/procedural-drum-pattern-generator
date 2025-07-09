@@ -222,3 +222,9 @@ body {
         padding: 5px;
     }
 }
+
+.summary {
+    text-align: center;
+    margin: 20px;
+    max-width: 800px;
+}
