@@ -3,10 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Procedural Drum Generator</title>
+    <title>Procedural Drum Pattern Generator</title>
+    <link rel="icon" href="data:,"> <!-- Prevent favicon.ico 404 error -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <h1>Procedural Drum Pattern Generator</h1>
     <div class="container">
         <header class="controls">
             <button id="generate-all">Generate All</button>
@@ -40,7 +42,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/midi-writer-js@2.1.4/build/MidiWriter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/midi-writer-js/2.1.4/midi-writer.min.js"></script> <!-- Updated CDN Link -->
     <script type="module" src="generator.js"></script>
     <script type="module" src="app.js"></script>
 </body>
